@@ -10,6 +10,7 @@ on this exact board) plus the RBJ math the firmware already uses.
 pip install -r requirements.txt
 python3 coeff_format.py --json golden.json      # ~1 s
 python3 fixed_point_notch.py --out results       # ~5 s; --quick for a coarse grid
+python3 fdsp_bank_decode.py [path/to/Lark-fdsp.c]  # <1 s; FastDSP feedback-tap sign
 ```
 
 Confidence labels below: **verified** = reproduced numerically from upstream
@@ -35,7 +36,8 @@ VOLUME slot — so the table's format is also the FastDSP parameter format.
 |---|---|---|
 | Number format | **Q5.27** two's-complement, 1.0 = `0x08000000` | Only format where any design formula reaches float-noise error across all 7 peaking rows (Q8.24 is off by ~14, Q1.31 by ~2) |
 | Slot order | **[b0, b1, b2, a1, a2]**, a0 normalised to 1 | Direct decode |
-| a1/a2 sign | **stored as-is** (H(z) denominator is 1 + a1 z⁻¹ + a2 z⁻²) | Negating a1/a2 raises the best-case error from 3e-9 to ~4 |
+| a1/a2 sign, software EQ table | **stored as-is** (H(z) denominator is 1 + a1 z⁻¹ + a2 z⁻²) | Negating a1/a2 raises the best-case error from 3e-9 to ~4 |
+| a1/a2 sign, **FastDSP hardware slots** | **stored NEGATED**: slot = `[b0, b1, b2, -a1, -a2]` | `fdsp_bank_decode.py`: every shipped biquad in upstream's `Lark-fdsp.c` banks is stable (|pole| 0.77–0.998) only under the negated reading; as-is gives |pole| ≈ 1.7–2.4 |
 | Generator | **Orfanidis** peaking EQ (JAES 1997, unity gain prescribed at Nyquist), fs = 48 kHz, Δω = ω0/Q, G_B = √G | All 7 rows match to ≤ 3.1e-9 |
 
 **Why RBJ "drifts".** A plain RBJ-cookbook recomputation matches the 150 Hz
@@ -53,7 +55,7 @@ this is a footnote: the firmware computes its own coefficients, so only the
 `round(x * 2**27)` wrapped to uint32; unity biquad is
 `{0x08000000, 0, 0, 0, 0}`; the 150 Hz row is a legitimate golden vector for an
 RBJ-based encoder (low f0, so RBJ ≡ Orfanidis to 5 decimals); the other six
-rows are Orfanidis-exact and must **not** be used as RBJ goldens.
+rows are Orfanidis-exact and must **not** be used as RBJ goldens. **Sign caveat:** the Equalizer.cpp table is upstream's nRF-side *software* EQ; the codec's FastDSP slots store the feedback taps negated (see the table above and `fdsp_bank_decode.py`), so an encoder targeting FastDSP must write `-a1, -a2` — and the 150 Hz golden's last two words must be negated (two's-complement) when used as a FastDSP golden. `golden.json` carries both conventions explicitly.
 
 ## 2. Q5.27 quantisation of Haven's notches — `fixed_point_notch.py`
 

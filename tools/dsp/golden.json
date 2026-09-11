@@ -1,5 +1,5 @@
 {
-  "source": "open-earable-2/src/audio/Equalizer.cpp + ADAU1860.cpp fdsp_set_volume (1<<27 = unity)",
+  "source": "open-earable-2/src/audio/Equalizer.cpp + ADAU1860.cpp fdsp_set_volume (1<<27 = unity) ; sign convention for FastDSP slots from Lark-fdsp.c bank decode",
   "frac_bits": 27,
   "unity_word": "0x08000000",
   "slot_order": [
@@ -9,7 +9,6 @@
     "a1",
     "a2"
   ],
-  "a_coefficients_negated": false,
   "generator_formula": "Orfanidis (unity Nyquist gain)",
   "fs_hz": 48000.0,
   "golden_rows": [
@@ -32,6 +31,13 @@
         "0x07D42210",
         "0xF03F8784",
         "0x07C13F83"
+      ],
+      "fastdsp_slot_words": [
+        "0x07ED1CFE",
+        "0xF03F890A",
+        "0x07D420FF",
+        "0x0FC076F6",
+        "0xF83EC203"
       ]
     },
     {
@@ -46,7 +52,14 @@
         "0xF08F4C0C",
         "0x077CECED"
       ],
-      "note": "Orfanidis-exact; RBJ differs here, so do NOT use as an RBJ golden"
+      "note": "Orfanidis-exact; RBJ differs here, so do NOT use as an RBJ golden",
+      "fastdsp_slot_words": [
+        "0x081B095D",
+        "0xF08F4C0C",
+        "0x0761E390",
+        "0x0F70B3F4",
+        "0xF8831313"
+      ]
     },
     {
       "f0_hz": 3600,
@@ -60,7 +73,14 @@
         "0xF3A4F7B5",
         "0x05DDF449"
       ],
-      "note": "Orfanidis-exact; RBJ differs here, so do NOT use as an RBJ golden"
+      "note": "Orfanidis-exact; RBJ differs here, so do NOT use as an RBJ golden",
+      "fastdsp_slot_words": [
+        "0x0768EE95",
+        "0xF3A4F7B5",
+        "0x067505B4",
+        "0x0C5B084B",
+        "0xFA220BB7"
+      ]
     },
     {
       "f0_hz": 5000,
@@ -74,7 +94,14 @@
         "0xF6E18719",
         "0x037E89B4"
       ],
-      "note": "Orfanidis-exact; RBJ differs here, so do NOT use as an RBJ golden"
+      "note": "Orfanidis-exact; RBJ differs here, so do NOT use as an RBJ golden",
+      "fastdsp_slot_words": [
+        "0x076FC198",
+        "0xF6E18719",
+        "0x040EC81C",
+        "0x091E78E7",
+        "0xFC81764C"
+      ]
     },
     {
       "f0_hz": 5500,
@@ -88,7 +115,14 @@
         "0xF5A24BD8",
         "0x05C99CFD"
       ],
-      "note": "Orfanidis-exact; RBJ differs here, so do NOT use as an RBJ golden"
+      "note": "Orfanidis-exact; RBJ differs here, so do NOT use as an RBJ golden",
+      "fastdsp_slot_words": [
+        "0x073E5C38",
+        "0xF5A24BD8",
+        "0x068B40C5",
+        "0x0A5DB428",
+        "0xFA366303"
+      ]
     },
     {
       "f0_hz": 9000,
@@ -102,7 +136,14 @@
         "0xFAF010E0",
         "0x053A705E"
       ],
-      "note": "Orfanidis-exact; RBJ differs here, so do NOT use as an RBJ golden"
+      "note": "Orfanidis-exact; RBJ differs here, so do NOT use as an RBJ golden",
+      "fastdsp_slot_words": [
+        "0x074F07EC",
+        "0xFAF010E0",
+        "0x05EB6872",
+        "0x050FEF20",
+        "0xFAC58FA2"
+      ]
     },
     {
       "f0_hz": 13000,
@@ -116,7 +157,14 @@
         "0x0199A84F",
         "0x044281F5"
       ],
-      "note": "Orfanidis-exact; RBJ differs here, so do NOT use as an RBJ golden"
+      "note": "Orfanidis-exact; RBJ differs here, so do NOT use as an RBJ golden",
+      "fastdsp_slot_words": [
+        "0x071131FF",
+        "0x0199A84F",
+        "0x05314FF6",
+        "0xFE6657B1",
+        "0xFBBD7E0B"
+      ]
     }
   ],
   "encode_examples": {
@@ -131,5 +179,16 @@
       "0x00000000",
       "0x00000000"
     ]
+  },
+  "sign_convention": {
+    "software_eq_table_Equalizer_cpp": {
+      "feedback_taps": "a1, a2 as-is",
+      "denominator": "1 + a1 z^-1 + a2 z^-2"
+    },
+    "fastdsp_hardware_slots": {
+      "feedback_taps": "-a1, -a2 (negated)",
+      "evidence": "fdsp_bank_decode.py on open-earable-2 Lark-fdsp.c: all shipped biquads stable only when read negated",
+      "encoder_rule": "slot = [q527(b0), q527(b1), q527(b2), q527(-a1), q527(-a2)]"
+    }
   }
 }
