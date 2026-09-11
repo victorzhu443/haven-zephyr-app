@@ -36,13 +36,14 @@ bring-up history — not generic Zephyr-tutorial material.
                                 ▼
                      ┌─────────────────────┐        ┌──────────────────┐
                      │  adau1860_control    │◀──────│ settings_store    │
-                     │ (I2C1 bus, RBJ biquad│        │ (NVS restore on   │
-                     │  coefficient math,   │        │  boot, save on    │
-                     │  tone gen -- mostly  │        │  every validated  │
-                     │  TODO(hw-bringup)    │        │  BLE write)        │
-                     │  placeholders past   │        └──────────────────┘
-                     │  the math)           │
-                     └─────────────────────┘
+                     │ (codec bring-up, RBJ │        │ (NVS restore on   │
+                     │  biquad math → Q5.27 │        │  boot, save on    │
+                     │  → FastDSP safeload  │        │  every validated  │
+                     │  over I2C; tone gen  │        │  BLE write)        │
+                     │  still a stub)       │        └──────────────────┘
+                     └──────────┬──────────┘
+                                ▼
+                     ADAU1860 FastDSP: PDM mic → 5 biquads → … → DAC
 ```
 
 **Module responsibilities:**
@@ -93,14 +94,20 @@ bring-up history — not generic Zephyr-tutorial material.
   persistence for Volume/FreqRange. Saves on every validated BLE write
   (from `gatt_audio_service.c`), restores on boot via the trusted-source
   entry points above.
-- **`adau1860_control.c`** — I2C1 bus binding and the RBJ notch/peaking-cut
-  biquad coefficient math (real, tested — see `tests/host/`). Everything
-  past coefficient computation (actual register writes, the safeload
-  handshake, the tone generator, the I2S audio data path) is
-  `TODO(hw-bringup)` placeholder code returning success without touching
-  real hardware registers yet — this is accurate as of this doc, not
-  stale; check the file's own TODO comments for the current state before
-  assuming otherwise.
+- **`adau1860_control.c`** — the codec driver, ported from upstream
+  OpenEarable 2.0's `ADAU1860.cpp` (which runs on the board Haven's PCB is
+  a port of): enable/supply GPIO sequencing, PLL/frequency-multiplier
+  bring-up with bounded STATUS2 polls, DMIC → decimator → ASRC → serial-port
+  routing, FastDSP program + parameter-bank load
+  (`src/lark_fdsp_program.c`, upstream's program verbatim), DAC/headphone
+  amp on. Runtime: RBJ notch/peaking-cut math (double precision) → Q5.27
+  with the feedback taps negated → safeload into FastDSP slots 0–4; unity
+  pass-through for unused slots and for bypass; volume/mute via upstream's
+  slots 6/7. Register addresses are **32-bit** (`src/adau1860_regs.h`).
+  Host-tested down to the bytes on the wire (`tests/host/`), CI-compiled,
+  **not yet run against a codec**. The LDL tone functions still only log
+  — see `docs/fastdsp-program.md` for the plan and the first-power-up
+  checklist.
 
 ## 2. BLE service/characteristic UUID map
 

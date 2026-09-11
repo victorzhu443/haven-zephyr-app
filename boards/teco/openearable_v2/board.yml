@@ -1,0 +1,5 @@
+board:
+  name: openearable_v2
+  vendor: teco
+  socs:
+  - name: nrf5340

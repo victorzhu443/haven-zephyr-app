@@ -20,7 +20,7 @@ LOG_MODULE_REGISTER(mock_audio_pipeline, LOG_LEVEL_INF);
  * synthetic timeline, not real-time streaming: one buffer's worth of
  * samples is generated and filtered per tick, at whatever wall-clock rate
  * MOCK_PIPELINE_TICK_MS runs, not at 48 kHz. Matches
- * ADAU1860_SAMPLE_RATE_HZ in adau1860_control.c so the math carries over
+ * ADAU1860_FDSP_RATE_HZ in adau1860_control.h (the real codec runs at 192 kHz)
  * unchanged once real audio replaces this.
  */
 #define MOCK_SAMPLE_RATE_HZ 48000.0f
