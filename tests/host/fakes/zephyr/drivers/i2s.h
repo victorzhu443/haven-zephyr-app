@@ -33,8 +33,8 @@ typedef uint8_t i2s_fmt_t;
 typedef uint8_t i2s_opt_t;
 
 #define I2S_FMT_DATA_FORMAT_I2S      (0 << 0)
-#define I2S_OPT_BIT_CLK_MASTER       (0 << 0)
-#define I2S_OPT_FRAME_CLK_MASTER     (0 << 1)
+#define I2S_OPT_BIT_CLK_CONTROLLER       (0 << 0)
+#define I2S_OPT_FRAME_CLK_CONTROLLER     (0 << 1)
 #define I2S_OPT_BIT_CLK_SLAVE        (1 << 0)
 #define I2S_OPT_FRAME_CLK_SLAVE      (1 << 1)
 

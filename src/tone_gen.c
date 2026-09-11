@@ -140,7 +140,7 @@ static int i2s_configure_tx(void)
 		.format = I2S_FMT_DATA_FORMAT_I2S,
 		/* nRF5340 drives BCLK and LRCLK; the codec's serial port 0 is a
 		 * slave and its ASRC absorbs the clock-domain difference. */
-		.options = I2S_OPT_BIT_CLK_MASTER | I2S_OPT_FRAME_CLK_MASTER,
+		.options = I2S_OPT_BIT_CLK_CONTROLLER | I2S_OPT_FRAME_CLK_CONTROLLER,
 		.frame_clk_freq = TONE_GEN_SAMPLE_RATE_HZ,
 		.mem_slab = &tone_slab,
 		.block_size = TONE_BLOCK_BYTES,
