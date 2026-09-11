@@ -6,9 +6,9 @@
  * Enable pin   : Arduino D2 = P1.04 → the codec's PD/enable (net DAC_ENABLE
  *                on the real board). Must be driven before any I2C traffic;
  *                adau1860_control.c does that.
- * Audio data   : I2S0, nRF5340 as MASTER (future LDL-tone path; no audio
- *                flows over it yet — the hear-through path is mic → FastDSP
- *                → DAC entirely inside the codec).
+ * Audio data   : I2S0, nRF5340 as MASTER — carries only the LDL calibration
+ *                tone (tone_gen.c, 48 kHz 16-bit stereo). The hear-through
+ *                path is mic → FastDSP → DAC entirely inside the codec.
  *
  * This DK is only a bench for the codec's control plane. The real target is
  * boards/teco/openearable_v2 (the OpenEarable 2.0 / Haven board), where the
@@ -72,6 +72,10 @@
 	pinctrl-0 = <&i2s0_default>;
 	pinctrl-1 = <&i2s0_sleep>;
 	pinctrl-names = "default", "sleep";
+	/* 12.288 MHz audio PLL -> exact 48 kHz frame clock for the LDL tone
+	 * (tone_gen.c). Wire D4 (BCLK) / D5 (LRCLK) / D6 (SDOUT) to the eval
+	 * board's P2 header: pins 8 / 6 / 4 respectively (UG-2017 Table 8). */
+	clock-source = "ACLK";
 };
 
 &clock {

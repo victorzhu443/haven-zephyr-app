@@ -39,6 +39,39 @@ config HAVEN_DAC_SOURCE_DMIC_DIRECT
 	  the mic, clocks, DAC and receiver all work and any later silence is a
 	  FastDSP program/routing question, not hardware. No filters and no
 	  limiter are in this path -- never wear the device in this mode.
+config HAVEN_TONE_FULL_SCALE_DB
+	int "LDL tone: commanded level_db that maps to 0 dBFS on the I2S link"
+	range 0 120
+	default 85
+	help
+	  Tone amplitude = 10^((level_db - this)/20) of full scale, so the
+	  default puts the protocol's 85 dB ceiling at exactly 0 dBFS -- the
+	  loudest the link can carry. This is a NOMINAL placeholder: the real
+	  relationship between level_db and dB SPL at the eardrum has to be
+	  measured on hardware (haven-app docs/calibration.md), after which
+	  this constant -- or a per-frequency table replacing it -- gets the
+	  measured value. Do not treat any dB number as physical until then.
+
+choice HAVEN_TONE_ROUTE
+	prompt "LDL tone: codec routing while a tone plays"
+	default HAVEN_TONE_ROUTE_DAC_DIRECT
+	help
+	  See docs/tone-path.md.
+
+config HAVEN_TONE_ROUTE_DAC_DIRECT
+	bool "DAC fed from the I2S input; hear-through paused for the tone"
+	help
+	  Upstream OpenEarable's non-DSP playback route (DAC_ROUTE0 = I2S with
+	  serial port 0 -> input ASRC 0). Known to make sound; guarantees the
+	  tone is not shaped by the user's own notch filters, which an LDL test
+	  requires. Costs hear-through for the duration of the tone.
+
+config HAVEN_TONE_ROUTE_FDSP_MIX
+	bool "DAC stays on the FastDSP; rely on the program's mixer slot (unverified)"
+	help
+	  Leaves DAC_ROUTE0 on FastDSP channel 0 and assumes upstream's
+	  program mixes the I2S/ASRC path in at slot 8 after the biquads. Not
+	  established -- for hardware experiments only.
 
 endchoice
 

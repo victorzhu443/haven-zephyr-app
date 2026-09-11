@@ -25,11 +25,17 @@ ble_transport.c      — NUS peripheral "Haven", line reassembly,
 protocol.c            — fixed-schema JSON parser (MULTI_FILTER / BYPASS), clamps
     ▼
 adau1860_control.c    — codec bring-up (ported from upstream OpenEarable),
-    │                   RBJ biquad math → Q5.27 → FastDSP safeload over I2C
+    │                   RBJ biquad math → Q5.27 → FastDSP safeload over I2C;
+    │                   LDL tone: level_db → gain, DAC route switch
     ▼
 ADAU1860 FastDSP      — PDM mic → 5 notch / peaking-cut biquads → expander →
                         volume → mute → mixer → limiter → DAC → speaker
                         (src/lark_fdsp_program.c, upstream's program verbatim)
+
+tone_gen.c            — LDL calibration tone: sine synthesised on the nRF,
+    │                   streamed over I2S0 (nRF master, 48 kHz) into the
+    ▼                   codec's serial port 0 → ASRC → DAC (docs/tone-path.md)
+tone_safety.c         — 85 dB clamp + 3 s keep-alive watchdog around it
 
 gatt_audio_service.c  — Haven Audio Control Service (custom GATT, separate
     │                    from NUS above): Volume + FreqRange characteristics
@@ -141,7 +147,8 @@ explicitly works regardless of how west discovered the app):
   ~$535 all in). The eval board exposes the DMIC interface (header P44) and
   serial port 0 (header P2), so it can be wired to the DK exactly like the
   real board: I2C1 + enable on the Arduino header, PDM mic on P44, I2S0 on
-  P2 when the tone path lands.
+  P2 (DK D4 → P2.8 BCLK, D5 → P2.6 LRCLK, D6 → P2.4 data in) for the LDL
+  tone.
 
 Neither is cheap; the eval-board route is the one that doesn't wait on a
 PCB fab and exercises every register this firmware touches.
@@ -197,11 +204,14 @@ the evidence chain and the first-power-up checklist):
       hardware. `docs/fastdsp-program.md` lists the power-up checks in order
       and what each failure mode means (wrong rate, wrong routing, unpowered
       codec).
-- [ ] **LDL tone path on hardware** (`adau1860_control_set_tone()` and
-      friends still only log): nRF I2S master → codec SPT0 → ASRCI → mixer
-      slot → DAC, then **acoustic calibration** of `level_db` → dB SPL.
-      Until that measurement exists the 85 dB ceiling is a nominal number,
-      not a physical one — do it before any real-ear testing.
+- [x] **LDL tone path** written and host-tested (`src/tone_gen.c`,
+      `docs/tone-path.md`): nRF I2S master → codec SPT0 → ASRCI0 → DAC,
+      hear-through paused for the tone, click-free level ramps, route
+      restored on stop / watchdog / BLE loss. Not yet run on hardware.
+- [ ] **Acoustic calibration** of `level_db` → dB SPL (haven-app
+      `docs/calibration.md`). Until that measurement exists the 85 dB
+      ceiling is a nominal number, not a physical one — do it before any
+      real-ear testing.
 - [ ] Hear-through latency measurement (impulse in → speaker out).
 - [ ] Wire the GATT Volume characteristic to
       `adau1860_control_set_volume_pct()` (only the mock pipeline consumes

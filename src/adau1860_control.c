@@ -10,6 +10,7 @@
 #include "adau1860_control.h"
 #include "adau1860_regs.h"
 #include "lark_fdsp_program.h"
+#include "tone_gen.h"
 
 #include <errno.h>
 #include <math.h>
@@ -47,6 +48,29 @@ LOG_MODULE_REGISTER(adau1860_control, LOG_LEVEL_INF);
 #else
 #define HAVEN_DAC_SOURCE_ROUTE ADAU1860_DAC_ROUTE_FDSP_CH(0)
 #endif
+
+/* LDL tone: commanded level that maps to 0 dBFS on the I2S link. Nominal
+ * until acoustic calibration (haven-app docs/calibration.md) replaces it. */
+#ifdef CONFIG_HAVEN_TONE_FULL_SCALE_DB
+#define TONE_FULL_SCALE_DB ((float)CONFIG_HAVEN_TONE_FULL_SCALE_DB)
+#else
+#define TONE_FULL_SCALE_DB 85.0f
+#endif
+
+/* Codec-side routing while a tone plays -- see docs/tone-path.md. Default:
+ * DAC fed straight from the I2S input (upstream's no-DSP playback route),
+ * hear-through suspended, tone guaranteed unfiltered. */
+#ifdef CONFIG_HAVEN_TONE_ROUTE_FDSP_MIX
+#define TONE_ROUTE_DAC_DIRECT 0
+#else
+#define TONE_ROUTE_DAC_DIRECT 1
+#endif
+
+/* DAC_CTRL2 bits, per upstream mute(): bit 6 = mute, bit 7 = force mute. */
+#define DAC_CTRL2_MUTE   0x40
+#define DAC_CTRL2_UNMUTE 0x00
+/* STATUS2 bit 2: input ASRC locked (upstream check_ascr_lock()). */
+#define STATUS2_ASRC_LOCK ADAU1860_STATUS2_ASRCI_LOCK
 
 /* ── Devicetree bindings ─────────────────────────────────────────────────── */
 #define ADAU1860_NODE DT_NODELABEL(adau1860)
@@ -465,11 +489,111 @@ static int set_all_biquads_unity(void)
 	return 0;
 }
 
+/* ── LDL tone: codec-side routing ───────────────────────────────────────────
+ * The tone itself is synthesised on the nRF (tone_gen.c) and arrives on
+ * serial port 0 -> input ASRC 0, both already powered by configure_routing().
+ * What the codec has to do is get that signal to the DAC:
+ *
+ *  TONE_ROUTE_DAC_DIRECT (default): DAC_ROUTE0 <- I2S while the tone plays,
+ *    back to FastDSP ch 0 afterwards. This is upstream's non-DSP playback
+ *    configuration (SAI I2S_IN + ASRCI0_EN + DAC_ROUTE0 = 0), so it is known
+ *    to produce audio. Hear-through is suspended for the duration, and the
+ *    tone cannot pass through the user's own notches -- for an LDL test both
+ *    are what you want.
+ *  FDSP mix (CONFIG_HAVEN_TONE_ROUTE_FDSP_MIX): leave the DAC on FastDSP and
+ *    rely on the program's mixer slot taking the I2S path. Whether it does,
+ *    and at what gain, is not established -- hardware experiment only.
+ *
+ * Route switches happen under DAC soft mute so they don't click, and the
+ * switch *into* the tone waits for the input ASRC to lock onto the freshly
+ * started I2S clock (upstream unmutes the DAC only after STATUS2 bit 2).
+ */
+static K_MUTEX_DEFINE(tone_route_lock);
+static bool tone_route_engaged;
+
+int32_t adau1860_tone_gain_q15(float level_db)
+{
+	float rel_db = level_db - TONE_FULL_SCALE_DB;
+
+	if (rel_db >= 0.0f) {
+		return TONE_GEN_GAIN_ONE;
+	}
+	if (rel_db < -96.0f) {
+		return 0; /* below the 16-bit floor */
+	}
+	return (int32_t)lrint(pow(10.0, (double)rel_db / 20.0) * (double)TONE_GEN_GAIN_ONE);
+}
+
+static int tone_route_engage(void)
+{
+	int err = 0;
+
+	if (!TONE_ROUTE_DAC_DIRECT || !initialised) {
+		return 0;
+	}
+	k_mutex_lock(&tone_route_lock, K_FOREVER);
+	if (!tone_route_engaged) {
+		err = reg_write8(ADAU1860_REG_DAC_CTRL2, DAC_CTRL2_MUTE);
+		if (!err) {
+			err = reg_write8(ADAU1860_REG_DAC_ROUTE0, ADAU1860_DAC_ROUTE_I2S);
+		}
+		if (!err) {
+			/* Bounded; a miss is logged, not fatal -- the tone may just
+			 * start a few ms late or, if the I2S clock never arrives,
+			 * stay silent, which the watchdog then tidies up. */
+			if (wait_status2(STATUS2_ASRC_LOCK, "input ASRC lock (tone)")) {
+				LOG_WRN("Input ASRC did not report lock -- is I2S0 clocking?");
+			}
+			err = reg_write8(ADAU1860_REG_DAC_CTRL2, DAC_CTRL2_UNMUTE);
+		}
+		tone_route_engaged = true;
+	}
+	k_mutex_unlock(&tone_route_lock);
+	return err;
+}
+
+static int tone_route_disengage(void)
+{
+	int err = 0;
+
+	if (!TONE_ROUTE_DAC_DIRECT || !initialised) {
+		return 0;
+	}
+	k_mutex_lock(&tone_route_lock, K_FOREVER);
+	if (tone_route_engaged) {
+		err = reg_write8(ADAU1860_REG_DAC_CTRL2, DAC_CTRL2_MUTE);
+		if (!err) {
+			err = reg_write8(ADAU1860_REG_DAC_ROUTE0, HAVEN_DAC_SOURCE_ROUTE); /* restore the configured source */
+		}
+		if (!err) {
+			err = reg_write8(ADAU1860_REG_DAC_CTRL2, DAC_CTRL2_UNMUTE);
+		}
+		tone_route_engaged = false;
+	}
+	k_mutex_unlock(&tone_route_lock);
+	return err;
+}
+
+/* Runs on the tone_gen feeder thread once the I2S link has actually gone
+ * quiet (ramp-down played out, peripheral stopped). */
+static void on_tone_stopped(void)
+{
+	int err = tone_route_disengage();
+
+	if (err) {
+		LOG_ERR("Restoring hear-through route after tone failed: %d", err);
+	} else {
+		LOG_INF("Tone finished -- hear-through route restored");
+	}
+}
+
 /* ── Public API ─────────────────────────────────────────────────────────────*/
 
 int adau1860_control_init(void)
 {
 	int err;
+
+	tone_gen_set_stopped_callback(on_tone_stopped);
 
 	if (!device_is_ready(bus.bus)) {
 		LOG_ERR("I2C bus for the ADAU1860 not ready");
@@ -579,22 +703,44 @@ int adau1860_control_set_mute(bool muted)
 
 int adau1860_control_set_tone(float f0_hz, float level_db)
 {
-	/* NOT IMPLEMENTED on hardware yet -- see the header. Caller
-	 * (tone_safety.c) has already clamped level_db. */
-	LOG_WRN("Tone [no hardware path yet]: f0=%.1f Hz level=%.1f dB", (double)f0_hz,
-		(double)level_db);
-	return 0;
+	/* Caller (tone_safety.c) has already clamped level_db to
+	 * [PROTOCOL_TONE_LEVEL_MIN_DB, PROTOCOL_TONE_LEVEL_MAX_DB]. */
+	int32_t gain = adau1860_tone_gain_q15(level_db);
+
+	LOG_INF("Tone: f0=%.1f Hz level=%.1f dB -> gain %ld/32768 (%s)", (double)f0_hz,
+		(double)level_db, (long)gain,
+		TONE_ROUTE_DAC_DIRECT ? "DAC<-I2S, hear-through paused" : "FDSP mix");
+
+	/* I2S first so the codec's ASRC has a clock to lock to, then route. */
+	int err = tone_gen_start(f0_hz, gain);
+
+	if (err) {
+		LOG_ERR("Tone generator start failed: %d", err);
+		return err;
+	}
+	return tone_route_engage();
 }
 
 int adau1860_control_set_tone_level(float level_db)
 {
-	LOG_WRN("Tone level [no hardware path yet]: %.1f dB", (double)level_db);
-	return 0;
+	int32_t gain = adau1860_tone_gain_q15(level_db);
+
+	LOG_INF("Tone level: %.1f dB -> gain %ld/32768", (double)level_db, (long)gain);
+	return tone_gen_set_gain(gain);
 }
 
 int adau1860_control_stop_tone(void)
 {
-	LOG_INF("Tone stop [no hardware path yet]");
+	LOG_INF("Tone stop");
+	int err = tone_gen_stop();
+
+	if (err) {
+		/* No generator (bench without I2S, or init failed): nothing is
+		 * playing, but make sure the codec isn't left routed to I2S. */
+		return tone_route_disengage();
+	}
+	/* Route restore follows from the feeder thread (on_tone_stopped) once
+	 * the ramp-down has actually played. */
 	return 0;
 }
 
@@ -605,5 +751,15 @@ void adau1860_control_on_ble_connected(void)
 
 void adau1860_control_on_ble_disconnected(void)
 {
-	LOG_INF("BLE disconnected -- filters kept running");
+	/* Filters keep running -- hearing protection must not depend on the
+	 * phone. The tone must not either: main.c's tone_safety_stop() already
+	 * stops the generator; this is the second layer, restoring the codec
+	 * route synchronously (under soft mute) even if the feeder thread's
+	 * callback is late or never comes. Idempotent. */
+	int err = tone_route_disengage();
+
+	if (err) {
+		LOG_ERR("Route restore on BLE disconnect failed: %d", err);
+	}
+	LOG_INF("BLE disconnected -- filters kept running, tone route restored");
 }

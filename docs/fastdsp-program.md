@@ -132,9 +132,9 @@ Wire format: 4 address bytes big-endian + payload in a single I2C write;
 multi-word payloads little-endian per word (what upstream's `memcpy` of a
 `uint32_t[]` on Cortex-M produces).
 
-Not ported: the hardware EQ engine setup (`setup_EQ`; only used for music),
-the ASRC-lock wait (only matters for the I2S input path), the I2S data path
-itself, and the tone generator (see below).
+Not ported: the hardware EQ engine setup (`setup_EQ`; only used for music).
+The ASRC-lock wait is used by the tone path (`docs/tone-path.md`), which is
+also where the I2S data path lives.
 
 ## Runtime
 
@@ -192,12 +192,14 @@ unverified).
 
 ## Still to do
 
-- **LDL tone path.** The FastDSP program has no oscillator. Plan: generate
-  the tone on the nRF5340 (upstream has `tone_gen` + an I2S "local tone"
-  shell command), I2S master → codec SPT0 → ASRCI → mixer slot 8 → DAC. The
-  I2S pinctrl is already in place (nRF master, SDOUT P0.28 → SDATAI_0). Then
-  **acoustically calibrate** `level_db` against dB SPL at the ear; until
-  then the 85 dB ceiling is a nominal number.
+- **LDL tone path: built, not run** — see `docs/tone-path.md`. The tone is
+  synthesised on the nRF5340 (`src/tone_gen.c`), streamed over I2S0 (nRF
+  master) into serial port 0 → ASRCI0, and the DAC is switched to the I2S
+  source for the duration (hear-through paused; the tone never passes
+  through the wearer's notches). What remains is hardware: confirm audio,
+  then **acoustically calibrate** `level_db` against dB SPL at the ear
+  (haven-app `docs/calibration.md`). Until then the 85 dB ceiling is a
+  nominal number.
 - **Confirm/adjust the FDSP program in Lark Studio** if step 4 above fails:
   open upstream's design (or rebuild: DMIC01 → 5 × biquad → expander →
   volume → mute → mixer → limiter → FDSP out 0), "Download to Target", and

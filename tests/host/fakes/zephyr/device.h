@@ -17,4 +17,10 @@ struct device {
 #define DT_NODE_HAS_PROP(node, prop) 0
 #define DT_PROP(node, prop) 0
 
+/* DEVICE_DT_GET(DT_NODELABEL(x)) -> &haven_fake_device_x; the fake driver
+ * header for that peripheral defines the object (drivers/i2s.h does for
+ * i2s0). */
+#define HAVEN_FAKE_DEVICE_(label) (&haven_fake_device_##label)
+#define DEVICE_DT_GET(node) HAVEN_FAKE_DEVICE_(node) /* two-step so a macro arg expands first */
+
 #endif /* FAKE_ZEPHYR_DEVICE_H_ */

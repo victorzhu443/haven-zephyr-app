@@ -85,6 +85,11 @@
 	 pinctrl-0 = <&i2s0_default>;
 	 pinctrl-1 = <&i2s0_sleep>;
 	 pinctrl-names = "default", "sleep";
+	 /* Haven: clock the I2S from the 12.288 MHz audio PLL (hfclkaudio
+	  * above) so 48 kHz is exact, as upstream does via nrfx directly
+	  * (NRF_I2S_CLKSRC_ACLK). Not critical -- the codec's ASRC would absorb
+	  * a PCLK32M-derived 47.6 kHz -- but there's no reason to be off. */
+	 clock-source = "ACLK";
  };
  
  dmic_dev: &pdm0 {

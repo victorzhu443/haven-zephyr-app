@@ -91,15 +91,25 @@ int adau1860_control_set_mute(bool muted);
 
 /* ── LDL calibration tone ─────────────────────────────────────────────────
  * Safety-critical -- see tone_safety.c, which owns validation/clamping and
- * the auto-stop watchdog. NOT YET IMPLEMENTED on hardware: the FastDSP
- * program has no oscillator. Planned path (upstream already has the pieces):
- * nRF5340 I2S master → codec SPT0 → ASRCI → mixer slot 8 → DAC, i.e. the
- * tone is generated on the nRF and mixed in after the filter chain, so
- * TONE_STOP never touches filter state. Until then these log and return 0.
+ * the auto-stop watchdog. The FastDSP program has no oscillator, so the
+ * tone is synthesised on the nRF5340 (tone_gen.c) and streamed over I2S0
+ * (nRF master) into the codec's serial port 0 -> input ASRC; the codec side
+ * then routes it to the DAC. Default routing feeds the DAC straight from the
+ * I2S input for the duration (hear-through paused, tone never passes through
+ * the user's notches); CONFIG_HAVEN_TONE_ROUTE_FDSP_MIX instead leaves the
+ * DAC on the FastDSP and relies on the program's mixer slot (unverified).
+ * See docs/tone-path.md. Not yet run on hardware.
+ *
+ * level_db -> linear gain: 10^((level_db - CONFIG_HAVEN_TONE_FULL_SCALE_DB)/20),
+ * clamped to [0, 1]. The full-scale constant is NOMINAL until the acoustic
+ * calibration in haven-app docs/calibration.md has been done.
  */
 int adau1860_control_set_tone(float f0_hz, float level_db);
 int adau1860_control_set_tone_level(float level_db);
 int adau1860_control_stop_tone(void);
+
+/* The level mapping above, exposed for tests and for the calibration tool. */
+int32_t adau1860_tone_gain_q15(float level_db);
 
 /* BLE link lifecycle hooks (main.c). Hearing protection must keep working
  * with the phone gone, so neither touches the filter state; they log.

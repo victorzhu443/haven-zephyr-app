@@ -105,9 +105,18 @@ bring-up history — not generic Zephyr-tutorial material.
   pass-through for unused slots and for bypass; volume/mute via upstream's
   slots 6/7. Register addresses are **32-bit** (`src/adau1860_regs.h`).
   Host-tested down to the bytes on the wire (`tests/host/`), CI-compiled,
-  **not yet run against a codec**. The LDL tone functions still only log
-  — see `docs/fastdsp-program.md` for the plan and the first-power-up
-  checklist.
+  **not yet run against a codec** — see `docs/fastdsp-program.md` for the
+  first-power-up checklist. The LDL tone functions map `level_db` to a
+  linear gain (`CONFIG_HAVEN_TONE_FULL_SCALE_DB`, nominal until calibrated)
+  and switch the DAC to the I2S input under soft mute for the tone's
+  duration.
+- **`tone_gen.c`** — the LDL tone itself: 1024-entry-table sine with a
+  32-bit phase accumulator, Q15 gain ramped per 5 ms block (no clicks),
+  streamed as 48 kHz / 16-bit stereo over I2S0 with the nRF5340 as bit and
+  frame clock master from a dedicated feeder thread. Start / retune /
+  stop / drain state machine; the stopped-callback is what lets
+  `adau1860_control.c` restore the hear-through route only once the link is
+  actually quiet. `docs/tone-path.md`.
 
 ## 2. BLE service/characteristic UUID map
 

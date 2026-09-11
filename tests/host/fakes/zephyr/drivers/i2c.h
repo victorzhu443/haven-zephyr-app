@@ -42,15 +42,15 @@ static inline void haven_fake_i2c_reset(void)
 	haven_fake_i2c_fail_writes = 0;
 }
 
-/* Register model for reads: STATUS2 reports power-up complete + FM ready so
- * init's polls pass; ID registers return a recognisable pattern; anything
- * else reads 0.
+/* Register model for reads: STATUS2 reports power-up complete + input ASRC
+ * locked + FM ready so init's and the tone path's polls pass; ID registers
+ * return a recognisable pattern; anything else reads 0.
  */
 static inline uint8_t haven_fake_i2c_reg8(uint32_t reg)
 {
 	switch (reg) {
 	case 0x4000C402u: /* STATUS2 */
-		return (1 << 7) | (1 << 1);
+		return (1 << 7) | (1 << 2) | (1 << 1);
 	case 0x4000C000u: /* VENDOR_ID */
 		return 0x41;
 	case 0x4000C001u:

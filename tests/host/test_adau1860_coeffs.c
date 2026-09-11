@@ -20,6 +20,7 @@
 #include <string.h>
 
 #include "../../src/lark_fdsp_program.c"
+#include "../../src/tone_gen.c" /* adau1860_control.c's tone functions call into it */
 #include "../../src/adau1860_control.c"
 
 const struct device haven_fake_i2c_bus_dev = { .name = "fake-i2c" };
