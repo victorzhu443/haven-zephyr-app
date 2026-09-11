@@ -121,7 +121,15 @@ for I2C1 (ADAU1860 control), the codec enable pin and I2S0 — double-check
 the bus numbering against your exact DK revision first (see the overlay's
 own comments). For the real board build with
 `--board openearable_v2/nrf5340/cpuapp` instead; its definition is in-tree
-under `boards/teco/openearable_v2/` and needs no overlay.
+under `boards/teco/openearable_v2/` and needs no overlay. Because sysbuild
+resolves the board before it configures the application, tell it where that
+in-tree board lives (`zephyr/module.yml` declares it, and passing it
+explicitly works regardless of how west discovered the app):
+
+   ```sh
+   west build --board openearable_v2/nrf5340/cpuapp --sysbuild haven_zephyr_app \
+     -- -DBOARD_ROOT="$(pwd)/haven_zephyr_app"
+   ```
 
 ### Bench hardware
 

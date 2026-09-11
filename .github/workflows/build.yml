@@ -82,11 +82,17 @@ jobs:
           # source_dir positional as its value instead (build 32872241192,
           # "invalid choice: 'haven_zephyr_app'"). Spelling out `always`
           # works on both.
+          # BOARD_ROOT: sysbuild resolves the board *before* it configures the
+          # application, so the app's own boards/ directory (where the in-tree
+          # openearable_v2 board lives) is not searched unless it is named as
+          # a board root. zephyr/module.yml declares it too; passing it here
+          # as well keeps the build independent of west's module discovery.
           west build \
             --board ${{ matrix.board }} \
             --sysbuild \
             --pristine always \
-            haven_zephyr_app
+            haven_zephyr_app \
+            -- -DBOARD_ROOT="$GITHUB_WORKSPACE/haven_zephyr_app"
 
       # No merged.hex: that's an MCUboot-merged-image convention and this
       # build has no bootloader (see sysbuild.conf) -- sysbuild instead

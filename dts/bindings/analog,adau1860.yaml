@@ -30,4 +30,4 @@ properties:
   supply-delay-us:
     type: int
     default: 300
-    description: Settling time after asserting supply-gpios (AP22916: 250 us).
+    description: "Settling time after asserting supply-gpios (AP22916: 250 us)."
