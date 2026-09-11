@@ -275,6 +275,8 @@
  
  /* Include partition configuration file */
  //#include "openearable_v2_nrf5340_cpuapp_partition_conf.dts"
- #include <common/nordic/nrf5340_cpuapp_partition.dtsi>
+ /* NCS v3.4: the nRF5340 partition layouts moved from <common/nordic/...>
+  * to <nordic/...> (see zephyr boards/nordic/nrf5340dk). */
+ #include <nordic/nrf5340_cpuapp_partition.dtsi>
  #include "openearable_v2_nrf5340_shared.dtsi"
  
