@@ -1,3 +1,12 @@
+/* ADAU1860 ("Lark") codec/DSP driver.
+ *
+ * The bring-up sequence (power_up / configure_routing / load_fdsp /
+ * configure_dac) and the safeload / volume / mute register recipes are
+ * ported from OpenEarable/open-earable-2 src/drivers/ADAU1860.cpp
+ * (OpenEarable project, TECO / KIT). Original distributed under the license
+ * in third_party/open-earable-2/LICENSE; modifications for Haven 2026.
+ * The coefficient math, Q5.27 encoding and everything else is Haven's.
+ */
 #include "adau1860_control.h"
 #include "adau1860_regs.h"
 #include "lark_fdsp_program.h"

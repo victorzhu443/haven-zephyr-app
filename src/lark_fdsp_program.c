@@ -1,4 +1,8 @@
 /* Upstream OpenEarable 2.0 FastDSP program for the ADAU1860 ("Lark"), as
+ * Ported from OpenEarable/open-earable-2 {path} (OpenEarable project,
+ * TECO / KIT). Original distributed under the license in
+ * third_party/open-earable-2/LICENSE; modifications for Haven 2026.
+ *
  * exported from ADI's Lark Studio ("Download to Target" writes exactly these
  * words to FDSP program/parameter memory -- EVAL-ADAU1860 User Guide UG-2017)
  * and checked in upstream as src/drivers/Lark-fdsp.c
