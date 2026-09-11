@@ -13,13 +13,11 @@ tracked backlog — nothing here is scheduled or committed to.
 
 ## Firmware
 
-- **Auto-apply the ML tool's output over BLE.** `ml/` already produces the
-  exact bytes the FreqRange characteristic expects, but nothing writes them
-  yet. A small bench script that runs `analyze.py` on a recording and
-  pushes the result straight to a connected board (over the same Web
-  Bluetooth path `tools/ble_bench_test.html` already uses) would close the
-  loop from "recorded a problem sound" to "board is filtering for it" in
-  one step.
+- ~~**Auto-apply the ML tool's output over BLE.**~~ Done — see
+  `ml/apply_over_ble.py`. Analysis + encoding + argument handling are
+  unit-tested; the actual radio write hasn't been exercised against a real
+  board (no Bluetooth adapter in the environment this was built in), so
+  verify that leg for real before relying on it unattended.
 - **CONFIG_PM_DEVICE for the I2C/I2S buses.** Once the real ADAU1860 driver
   work starts, suspending those peripherals between transactions (rather
   than just the CPU-idle savings `CONFIG_PM=y` gives today) would matter
@@ -39,10 +37,14 @@ tracked backlog — nothing here is scheduled or committed to.
 
 ## Hardware
 
-- **Resolve the BMX160/BMI160 schematic-vs-BOM mismatch.** Already flagged
-  earlier this session as real but currently dormant (no firmware code
-  touches IMU/accelerometer/gyro functionality yet) — worth fixing before
-  it's forgotten and someone orders the wrong part for a production run.
+- ~~**Resolve the BMX160/BMI160 schematic-vs-BOM mismatch.**~~ Done — see
+  `HAVEN_HARDWARE_REVIEW.md` §8 in `haven_dev_board_kicad`. Wiring
+  inspection confirmed the sourced part is BMI160 (6-axis, no
+  magnetometer): its ASDX/ASCX aux-interface pins are tied to GND, which
+  is BMI160's documented reference pattern for "no external magnetometer,"
+  not a valid way to wire a BMX160. Schematic `Value` corrected to match
+  the sourced part. No firmware touches IMU functionality yet, so this
+  was purely a BOM-accuracy fix, not a functional one.
 
 ## ML / DSP
 
