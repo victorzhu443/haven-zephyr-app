@@ -1,0 +1,135 @@
+{
+  "source": "open-earable-2/src/audio/Equalizer.cpp + ADAU1860.cpp fdsp_set_volume (1<<27 = unity)",
+  "frac_bits": 27,
+  "unity_word": "0x08000000",
+  "slot_order": [
+    "b0",
+    "b1",
+    "b2",
+    "a1",
+    "a2"
+  ],
+  "a_coefficients_negated": false,
+  "generator_formula": "Orfanidis (unity Nyquist gain)",
+  "fs_hz": 48000.0,
+  "golden_rows": [
+    {
+      "f0_hz": 150,
+      "gain_db": -8.0,
+      "q": 1.0,
+      "fs_hz": 48000.0,
+      "words": [
+        "0x07ED1CFE",
+        "0xF03F890A",
+        "0x07D420FF",
+        "0xF03F890A",
+        "0x07C13DFD"
+      ],
+      "note": "matches RBJ peaking to 5 decimals (low f0, so RBJ\u2248Orfanidis) and Orfanidis to 1e-9",
+      "rbj_words": [
+        "0x07ED1D73",
+        "0xF03F8784",
+        "0x07D42210",
+        "0xF03F8784",
+        "0x07C13F83"
+      ]
+    },
+    {
+      "f0_hz": 600,
+      "gain_db": 3.0,
+      "q": 1.0,
+      "fs_hz": 48000.0,
+      "words": [
+        "0x081B095D",
+        "0xF08F4C0C",
+        "0x0761E390",
+        "0xF08F4C0C",
+        "0x077CECED"
+      ],
+      "note": "Orfanidis-exact; RBJ differs here, so do NOT use as an RBJ golden"
+    },
+    {
+      "f0_hz": 3600,
+      "gain_db": -7.0,
+      "q": 2.3,
+      "fs_hz": 48000.0,
+      "words": [
+        "0x0768EE95",
+        "0xF3A4F7B5",
+        "0x067505B4",
+        "0xF3A4F7B5",
+        "0x05DDF449"
+      ],
+      "note": "Orfanidis-exact; RBJ differs here, so do NOT use as an RBJ golden"
+    },
+    {
+      "f0_hz": 5000,
+      "gain_db": -2.5,
+      "q": 1.0,
+      "fs_hz": 48000.0,
+      "words": [
+        "0x076FC198",
+        "0xF6E18719",
+        "0x040EC81C",
+        "0xF6E18719",
+        "0x037E89B4"
+      ],
+      "note": "Orfanidis-exact; RBJ differs here, so do NOT use as an RBJ golden"
+    },
+    {
+      "f0_hz": 5500,
+      "gain_db": -10.0,
+      "q": 4.0,
+      "fs_hz": 48000.0,
+      "words": [
+        "0x073E5C38",
+        "0xF5A24BD8",
+        "0x068B40C5",
+        "0xF5A24BD8",
+        "0x05C99CFD"
+      ],
+      "note": "Orfanidis-exact; RBJ differs here, so do NOT use as an RBJ golden"
+    },
+    {
+      "f0_hz": 9000,
+      "gain_db": -6.0,
+      "q": 4.0,
+      "fs_hz": 48000.0,
+      "words": [
+        "0x074F07EC",
+        "0xFAF010E0",
+        "0x05EB6872",
+        "0xFAF010E0",
+        "0x053A705E"
+      ],
+      "note": "Orfanidis-exact; RBJ differs here, so do NOT use as an RBJ golden"
+    },
+    {
+      "f0_hz": 13000,
+      "gain_db": -6.0,
+      "q": 4.0,
+      "fs_hz": 48000.0,
+      "words": [
+        "0x071131FF",
+        "0x0199A84F",
+        "0x05314FF6",
+        "0x0199A84F",
+        "0x044281F5"
+      ],
+      "note": "Orfanidis-exact; RBJ differs here, so do NOT use as an RBJ golden"
+    }
+  ],
+  "encode_examples": {
+    "1.0": "0x08000000",
+    "-1.0": "0xF8000000",
+    "-2.0": "0xF0000000",
+    "0.5": "0x04000000",
+    "unity_biquad": [
+      "0x08000000",
+      "0x00000000",
+      "0x00000000",
+      "0x00000000",
+      "0x00000000"
+    ]
+  }
+}
