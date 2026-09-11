@@ -1,5 +1,5 @@
 /* ADAU1860 ("Lark") control-port register map.
- * Ported from OpenEarable/open-earable-2 {path} (OpenEarable project,
+ * Ported from OpenEarable/open-earable-2 src/drivers/ADAU1860.h (OpenEarable project,
  * TECO / KIT). Original distributed under the license in
  * third_party/open-earable-2/LICENSE; modifications for Haven 2026.
  *
