@@ -19,9 +19,9 @@ LOG_MODULE_REGISTER(mock_audio_pipeline, LOG_LEVEL_INF);
  * yet (adau1860_control.c's audio path is still unwired), so this is a
  * synthetic timeline, not real-time streaming: one buffer's worth of
  * samples is generated and filtered per tick, at whatever wall-clock rate
- * MOCK_PIPELINE_TICK_MS runs, not at 48 kHz. Matches
- * ADAU1860_FDSP_RATE_HZ in adau1860_control.h (the real codec runs at 192 kHz)
- * unchanged once real audio replaces this.
+ * MOCK_PIPELINE_TICK_MS runs, not at 48 kHz. Deliberately independent of
+ * ADAU1860_FDSP_RATE_HZ (adau1860_control.h): the real codec's FastDSP runs
+ * at 192 kHz, this bench model stays at 48 kHz.
  */
 #define MOCK_SAMPLE_RATE_HZ 48000.0f
 #define MOCK_TEST_TONE_HZ   1000.0f
