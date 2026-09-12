@@ -39,6 +39,8 @@ config HAVEN_DAC_SOURCE_DMIC_DIRECT
 	  the mic, clocks, DAC and receiver all work and any later silence is a
 	  FastDSP program/routing question, not hardware. No filters and no
 	  limiter are in this path -- never wear the device in this mode.
+endchoice
+
 config HAVEN_TONE_FULL_SCALE_DB
 	int "LDL tone: commanded level_db that maps to 0 dBFS on the I2S link"
 	range 0 120
