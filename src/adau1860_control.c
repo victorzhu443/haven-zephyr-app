@@ -36,6 +36,18 @@ LOG_MODULE_REGISTER(adau1860_control, LOG_LEVEL_INF);
 #define FDSP_BANK LARK_FDSP_BANK_TRANSPARENCY
 #endif
 
+/* What feeds the DAC. Normal operation is FastDSP channel 0 (the biquad
+ * chain). CONFIG_HAVEN_DAC_SOURCE_DMIC_DIRECT routes the raw PDM mic straight
+ * to the DAC -- a first-power-on smoke test that proves mic, clocks, DAC and
+ * receiver with no DSP in the loop (so a silent device is a hardware fault,
+ * not a program-routing question). Not for wearing: no filters, no limiter.
+ */
+#if defined(CONFIG_HAVEN_DAC_SOURCE_DMIC_DIRECT)
+#define HAVEN_DAC_SOURCE_ROUTE ADAU1860_DAC_ROUTE_DMIC(0)
+#else
+#define HAVEN_DAC_SOURCE_ROUTE ADAU1860_DAC_ROUTE_FDSP_CH(0)
+#endif
+
 /* ── Devicetree bindings ─────────────────────────────────────────────────── */
 #define ADAU1860_NODE DT_NODELABEL(adau1860)
 
@@ -151,6 +163,13 @@ static int fdsp_safe_load(uint8_t slot, const uint32_t params[ADAU1860_FDSP_NUM_
 		return err;
 	}
 	err = mem_write_words(ADAU1860_REG_FDSP_SL_P0_0, params, ADAU1860_FDSP_NUM_PARAMS);
+	if (err) {
+		return err;
+	}
+	/* Explicit 0 -> 1 pulse, as ADI's own safeload routine does; upstream
+	 * writes only the 1 and works, so this is belt-and-braces for the case
+	 * where the bit is still latched from the previous update. */
+	err = reg_write8(ADAU1860_REG_FDSP_SL_UPDATE, 0);
 	if (err) {
 		return err;
 	}
@@ -309,7 +328,7 @@ static int power_up(void)
 	if (err) {
 		return err;
 	}
-	err = wait_status2(1 << 7, "power-up complete");
+	err = wait_status2(ADAU1860_STATUS2_POWER_UP_COMPLETE, "power-up complete");
 	if (err) {
 		return err;
 	}
@@ -322,12 +341,15 @@ static int power_up(void)
 	if (err) {
 		return err;
 	}
-	err = wait_status2((1 << 7) | (1 << 1), "frequency multiplier ready");
+	err = wait_status2(ADAU1860_STATUS2_POWER_UP_COMPLETE | ADAU1860_STATUS2_FM_CLK_READY,
+			   "frequency multiplier ready");
 	if (err) {
 		return err;
 	}
-	/* CM_STARTUP_OVER | master enable | Hibernate 1 (UG-2017: Hibernate1 +
-	 * BLOCKS_ON + CM_BST_ON). */
+	/* CM_STARTUP_OVER (bit 4) | MASTER_BLOCK_EN (bit 2) | PWR_MODE = 1
+	 * (Hibernate 1) -- UG-2017: Hibernate1 + BLOCKS_ON + CM_BST_ON. Bit 6
+	 * (0x40) is not a defined field in ADI's bit-field header; upstream
+	 * sets it and runs, so it is kept verbatim rather than "fixed" blind. */
 	return reg_write8(ADAU1860_REG_CHIP_PWR, 0x40 | 0x04 | 0x01);
 }
 
@@ -408,7 +430,7 @@ static int configure_dac(void)
 		uint32_t reg;
 		uint8_t val;
 	} seq[] = {
-		{ ADAU1860_REG_DAC_ROUTE0, ADAU1860_DAC_ROUTE_FDSP_CH(0) },
+		{ ADAU1860_REG_DAC_ROUTE0, HAVEN_DAC_SOURCE_ROUTE },
 		{ ADAU1860_REG_ADC_DAC_HP_PWR, 0x10 },   /* DAC/HP channel 0 on */
 		{ ADAU1860_REG_HP_LVMODE_CTRL1, 0x03 },  /* HP low-voltage mode + CM */
 		{ ADAU1860_REG_HP_LVMODE_CTRL3, 0x01 },
@@ -479,8 +501,10 @@ int adau1860_control_init(void)
 	}
 
 	initialised = true;
-	LOG_INF("ADAU1860 up: FastDSP bank %d running, DMIC -> 5 biquads -> DAC, fs %u Hz",
-		FDSP_BANK, (unsigned int)ADAU1860_FDSP_RATE_HZ);
+	LOG_INF("ADAU1860 up: FastDSP bank %d running, DAC source %s, fs %u Hz", FDSP_BANK,
+		IS_ENABLED(CONFIG_HAVEN_DAC_SOURCE_DMIC_DIRECT) ? "DMIC0 direct (smoke test, no DSP)"
+								  : "FastDSP ch0 (5 biquads)",
+		(unsigned int)ADAU1860_FDSP_RATE_HZ);
 	return 0;
 }
 

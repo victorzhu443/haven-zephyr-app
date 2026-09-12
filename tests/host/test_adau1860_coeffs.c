@@ -327,7 +327,7 @@ static void test_init_sequence_on_fake_codec(void)
 	CHECK(rate && rate->data[0] == 2);
 
 	/* Boot flat: five unity safeloads after the program is running. */
-	CHECK(haven_fake_i2c_count_writes(ADAU1860_REG_FDSP_SL_UPDATE) == LARK_FDSP_NUM_BIQUADS);
+	CHECK(haven_fake_i2c_count_writes(ADAU1860_REG_FDSP_SL_UPDATE) == 2 * LARK_FDSP_NUM_BIQUADS /* 0->1 pulse per safeload */);
 	const struct haven_fake_i2c_xfer *sl = haven_fake_i2c_last_write(ADAU1860_REG_FDSP_SL_P0_0);
 
 	CHECK(sl && sl->len == 20 && payload_word(sl, 0) == ADAU1860_Q27_ONE &&
@@ -366,7 +366,7 @@ static void test_apply_filters_safeloads_bands_then_unity(void)
 
 	CHECK(err == 0);
 	CHECK(haven_fake_i2c_count_writes(ADAU1860_REG_FDSP_SL_ADDR) == LARK_FDSP_NUM_BIQUADS);
-	CHECK(haven_fake_i2c_count_writes(ADAU1860_REG_FDSP_SL_UPDATE) == LARK_FDSP_NUM_BIQUADS);
+	CHECK(haven_fake_i2c_count_writes(ADAU1860_REG_FDSP_SL_UPDATE) == 2 * LARK_FDSP_NUM_BIQUADS /* 0->1 pulse per safeload */);
 
 	/* Walk the log: each SL_ADDR write is followed by its 20-byte payload. */
 	int slot_seen = 0;
@@ -401,7 +401,7 @@ static void test_bypass_writes_unity_everywhere_and_off_is_noop(void)
 	initialised = true;
 
 	CHECK(adau1860_control_set_bypass(true) == 0);
-	CHECK(haven_fake_i2c_count_writes(ADAU1860_REG_FDSP_SL_UPDATE) == LARK_FDSP_NUM_BIQUADS);
+	CHECK(haven_fake_i2c_count_writes(ADAU1860_REG_FDSP_SL_UPDATE) == 2 * LARK_FDSP_NUM_BIQUADS /* 0->1 pulse per safeload */);
 
 	haven_fake_i2c_reset();
 	CHECK(adau1860_control_set_bypass(false) == 0);

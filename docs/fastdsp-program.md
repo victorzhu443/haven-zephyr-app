@@ -146,8 +146,36 @@ the engine swaps between frames so no filter ever runs on a half-written
 set. Bypass = unity in all five slots. Volume and mute reuse upstream's
 slots 6/7 with the other four parameters kept as exported.
 
+## Route numbers are per-mux
+
+The `*_ROUTE*` registers take a small integer, and **the same integer means a
+different source at a different destination**. Cross-checked against the
+enums in ADI's Lark SDK (proprietary; read as reference only, not copied):
+
+| Value | `DAC_ROUTE0` / `EQ_ROUTE` | `FDEC_ROUTEn` |
+|---|---|---|
+| 0–15 | SAI0 slot (I2S in) | FDSP 0–15 |
+| 16–31 | SAI1 slot | TDSP 0–15 |
+| 32–47 | **FDSP 0–15** | ASRCI 0–3 (32–35), ADC 0–2 (36–38), **DMIC0 = 39, DMIC1 = 40**, DMIC2/3, EQ = 43 |
+| 48–63 | TDSP 0–15 | — |
+| 64–67 | ASRCI 0–3 | — |
+| 68–70 | ADC 0–2 | — |
+| 71–74 | **DMIC 0–3** | — |
+| 75 | EQ (DAC only) | — |
+
+So `DAC_ROUTE0 = 32` is the biquad chain (normal), `DAC_ROUTE0 = 71` is the
+raw mic with no DSP (`CONFIG_HAVEN_DAC_SOURCE_DMIC_DIRECT`, smoke test), and
+`EQ_ROUTE = 71` + `DAC_ROUTE0 = 75` would be a mic → hardware-EQ → DAC path
+that needs no FastDSP program at all (untested; EQ coefficient format
+unverified).
+
 ## First power-up checks (in this order)
 
+0. **Smoke test first.** Build once with `CONFIG_HAVEN_DAC_SOURCE_DMIC_DIRECT=y`.
+   If you hear the room through the receiver, the mic, clocks, DAC and
+   receiver all work; every later silence is a FastDSP routing/program
+   question. Do not wear the device in this mode (no limiter). Then rebuild
+   with the default (`HAVEN_DAC_SOURCE_FDSP`).
 1. RTT log shows `ADAU1860 vendor 0x.. device 0x.. rev 0x..` — the control
    port is alive. A NAK/`-ENODEV`: check DAC_ENABLE (P0.04), the V_LS rail
    (P1.11 load switch), the bus (P1.00 SCL / P1.15 SDA on the real board).

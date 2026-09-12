@@ -47,10 +47,34 @@
 #define ADAU1860_EQ_BANK_0            0x4000A200u
 #define ADAU1860_EQ_BANK_1            0x4000A400u
 
-/* DAC_ROUTE0 source selectors observed in upstream. */
-#define ADAU1860_DAC_ROUTE_I2S        0
+/* Route selectors. The number space is PER MUX (the same integer means a
+ * different source at a different destination). Values below are the ones
+ * upstream uses, cross-checked against the enums in ADI's Lark SDK
+ * (adi_lark_dac_route_e / adi_lark_eq_route_e / adi_lark_fdec_route_e --
+ * proprietary, consulted as read-only reference, not copied):
+ *   DAC_ROUTE0 / EQ_ROUTE : 0-15 SAI0 slot, 16-31 SAI1 slot, 32-47 FDSP ch,
+ *                           48-63 TDSP, 64-67 ASRCI, 68-70 ADC, 71-74 DMIC,
+ *                           75 EQ (DAC only), 76-83 FINT (DAC only)
+ *   FDEC_ROUTEn           : 0-15 FDSP, 16-31 TDSP, 32-35 ASRCI, 36-38 ADC,
+ *                           39-42 DMIC0-3, 43 EQ
+ */
+#define ADAU1860_DAC_ROUTE_I2S        0            /* SAI0 slot 0 */
 #define ADAU1860_DAC_ROUTE_FDSP_CH(n) (32 + (n))
+#define ADAU1860_DAC_ROUTE_ASRCI(n)   (64 + (n))
+#define ADAU1860_DAC_ROUTE_DMIC(n)    (71 + (n))   /* raw PDM mic, no DSP */
 #define ADAU1860_DAC_ROUTE_EQ         75
+#define ADAU1860_EQ_ROUTE_DMIC(n)     (71 + (n))
+#define ADAU1860_FDEC_ROUTE_DMIC(n)   (39 + (n))
+
+/* STATUS2 (0x4000C402) bit names, per the Lark SDK bit-field header. */
+#define ADAU1860_STATUS2_PLL_LOCK          (1u << 0)
+#define ADAU1860_STATUS2_FM_CLK_READY      (1u << 1)
+#define ADAU1860_STATUS2_ASRCI_LOCK        (1u << 2)
+#define ADAU1860_STATUS2_ASRCO_LOCK        (1u << 3)
+#define ADAU1860_STATUS2_SPT0_LOCK         (1u << 4)
+#define ADAU1860_STATUS2_SPT1_LOCK         (1u << 5)
+#define ADAU1860_STATUS2_SYNC_LOCK         (1u << 6)
+#define ADAU1860_STATUS2_POWER_UP_COMPLETE (1u << 7)
 
 /* -- Control registers ------------------------------------------------------ */
 

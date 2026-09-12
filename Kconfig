@@ -24,6 +24,24 @@ config HAVEN_FDSP_BANK
 	  biquads (mic path silent); bank 1 is the hear-through path Haven's
 	  bands are safeloaded into.
 
+choice HAVEN_DAC_SOURCE
+	prompt "What feeds the ADAU1860 DAC"
+	default HAVEN_DAC_SOURCE_FDSP
+
+config HAVEN_DAC_SOURCE_FDSP
+	bool "FastDSP channel 0 (mic -> 5 biquads -> limiter): normal operation"
+
+config HAVEN_DAC_SOURCE_DMIC_DIRECT
+	bool "DMIC0 straight to the DAC: first-power-on smoke test, no DSP"
+	help
+	  Routes the raw PDM microphone to the DAC (DAC_ROUTE0 = 71, per ADI's
+	  Lark SDK route enum). Use once on a fresh board: if you hear the room
+	  the mic, clocks, DAC and receiver all work and any later silence is a
+	  FastDSP program/routing question, not hardware. No filters and no
+	  limiter are in this path -- never wear the device in this mode.
+
+endchoice
+
 endmenu
 
 source "Kconfig.zephyr"
