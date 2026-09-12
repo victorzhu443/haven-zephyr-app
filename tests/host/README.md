@@ -32,19 +32,18 @@ Zephyr headers (`<zephyr/kernel.h>`, `<zephyr/bluetooth/gatt.h>`,
 `fakes/zephyr/...` via `-Ifakes`. Every fake header says exactly what it
 fakes and why in its own header comment.
 
-**One exception**: `test_adau1860_coeffs.c` does NOT include the real
-`adau1860_control.c`. That file has a file-scope
-`I2C_DT_SPEC_GET(DT_NODELABEL(adau1860))` devicetree macro that expands
-against real generated devicetree headers from a Zephyr build -- faking
-that convincingly felt like more risk of a *subtly wrong* fake than value,
-for one function. Instead, `calc_band_coeffs()`'s formula is copied
-verbatim into the test file, clearly marked, with a note that it must be
-manually kept in sync if the real function ever changes. The tests
-compensate by checking functional/algebraic properties of the RBJ formula
-itself (does the resulting filter actually notch the right frequency; does
-a known degenerate case reduce to an exact identity filter) rather than
-hardcoded expected coefficients, so a transcription mistake is likely to
-show up as a test failure rather than silently validating itself.
+`test_adau1860_coeffs.c` used to be the exception (a verbatim copy of
+`calc_band_coeffs()` because the real file's devicetree macros couldn't be
+faked). It now includes the real `adau1860_control.c` too: the devicetree
+surface it uses is small (`DT_NODELABEL`, `DT_NODE_HAS_PROP`, `DT_PROP`,
+`I2C_DT_SPEC_GET`, `GPIO_DT_SPEC_GET`) and is faked in
+`fakes/zephyr/device.h`, `drivers/i2c.h`, `drivers/gpio.h`. The I2C fake is
+not a no-op: it decodes every write (4-byte big-endian register address +
+payload) into a log the tests assert on, and answers reads from a tiny
+register model so the bring-up sequence's `STATUS2` polls succeed. That
+lets the tests check the driver down to the bytes it puts on the wire
+(program/bank memory writes, safeload slot sequence, Q5.27 words) without
+any Zephyr build.
 
 ## What's covered vs. not
 
@@ -52,7 +51,8 @@ show up as a test failure rather than silently validating itself.
 |---|---|---|
 | `protocol.c` | Full parse/clamp/reject logic, real production code, no stubs needed at all | n/a -- this file has no Zephyr/BLE dependency to begin with |
 | `mock_audio_pipeline.c` | Real `recompute_filter`/`process_buffer`/`generate_test_tone`/`on_volume_changed`, functional DSP correctness (passband/rejection, gain scaling, memory reset) | The `k_work` scheduling/timing itself (fake no-op) |
-| `adau1860_control.c` | `calc_band_coeffs()`'s formula via a documented verbatim copy (see above) | The real file's I2C bus code, init sequence, or anything past coefficient math -- all still placeholder TODOs anyway |
+| `adau1860_control.c` | Real production code: RBJ math (functional), Q5.27 encoding + FastDSP sign convention pinned to upstream OpenEarable data (Equalizer.cpp golden row; shipped FastDSP banks stable only with negated feedback), full `adau1860_control_init()` register sequence against the fake codec (program/bank/run/route/unmute/unity-safeload writes, clean failure when the codec NAKs), `apply_filters` slot-by-slot payloads, bypass, volume/mute words | Real I2C timing, the codec's actual behaviour (nobody has powered one with this code yet), GPIO electrical state |
+| `tone_gen.c` + tone functions in `adau1860_control.c` (`test_tone_path.c`) | Real production code: synthesis (frequency within 0.1 % at all LDL frequencies, full-scale without wrap, exact silence at zero gain, click-free gain ramps, phase continuity across blocks), `level_db → Q15 gain` mapping, I2S configuration (master / 48 kHz / 16-bit / stereo / 4-byte blocks), block alloc→fill→write→free with no leaks, start/retune/stop/drain state machine, codec route switch order (mute → route → unmute) and restore paths (feeder callback, BLE disconnect, degraded modes) | The feeder thread's scheduling (threads never run under the fake kernel), real I2S timing, whether the codec makes the routed audio audible, and the acoustic level (see haven-app `docs/calibration.md`) |
 | `gatt_audio_service.c` | Real `write_volume`/`write_freq_range`/`read_volume`/`read_freq_range`/`apply_volume`/`apply_freq_range`, including the accept-vs-reject-vs-clamp distinction and the trusted-path-skips-validation contract | Real BLE transport, ATT bearer, connection handling, or notification delivery (fakes are link-satisfying stubs, not a working GATT server) |
 | `settings_store.c` | Real `haven_settings_set()` key dispatch, length validation, read-failure propagation, subtree-vs-leaf name matching (using a REAL reimplementation of `settings_name_steq`'s semantics, not a no-op) | An actual flash/NVS save-then-restore round trip -- there is no native_sim or other Zephyr board target buildable in this sandbox to host a real settings backend against simulated flash. Only `haven_settings_set()`'s own dispatch logic is exercised, with isolated test-double `gatt_audio_set_volume`/`gatt_audio_set_freq_range` standing in for the real consumer. |
 
@@ -62,5 +62,5 @@ show up as a test failure rather than silently validating itself.
 ./run_tests.sh
 ```
 
-Builds and runs all five suites with plain gcc, no Zephyr toolchain
+Builds and runs all six suites with plain gcc, no Zephyr toolchain
 required. Exits nonzero if anything fails.
