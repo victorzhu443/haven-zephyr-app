@@ -59,6 +59,15 @@ LOG_MODULE_REGISTER(adau1860_control, LOG_LEVEL_INF);
 #define HAVEN_USE_EQ_ENGINE 0
 #endif
 
+/* Hardware output ceiling: DAC digital volume, written once at boot and on
+ * adau1860_control_set_output_ceiling_db(). Lark SDK: dB = 24 - 0.375*code,
+ * code 0xFF = mute. Sits after every DSP path, unreachable from the app. */
+#ifdef CONFIG_HAVEN_OUTPUT_CEILING_DB
+#define OUTPUT_CEILING_DB_DEFAULT CONFIG_HAVEN_OUTPUT_CEILING_DB
+#else
+#define OUTPUT_CEILING_DB_DEFAULT 0
+#endif
+static int output_ceiling_db = OUTPUT_CEILING_DB_DEFAULT;
 
 /* LDL tone: commanded level that maps to 0 dBFS on the I2S link. Nominal
  * until acoustic calibration (haven-app docs/calibration.md) replaces it. */
@@ -495,8 +504,6 @@ static int configure_dac(void)
 		{ ADAU1860_REG_DAC_NOISE_CTRL1, 0x10 },
 		{ ADAU1860_REG_DAC_NOISE_CTRL2, 0x02 },
 		{ ADAU1860_REG_PB_CTRL, 0x02 },          /* high performance */
-		{ ADAU1860_REG_DAC_VOL0, 0xFF - 0xC0 },  /* upstream MAX_VOLUME_REG_VAL */
-		{ ADAU1860_REG_DAC_CTRL2, 0x00 },        /* unmute */
 	};
 
 	for (size_t i = 0; i < ARRAY_SIZE(seq); i++) {
@@ -506,7 +513,55 @@ static int configure_dac(void)
 			return err;
 		}
 	}
-	return 0;
+	/* Output ceiling (replaces upstream's fixed 0xFF - 0xC0 = code 63,
+	 * +0.375 dB), then unmute. */
+	int err = reg_write8(ADAU1860_REG_DAC_VOL0, adau1860_dac_vol_code(output_ceiling_db));
+
+	if (err) {
+		return err;
+	}
+	return reg_write8(ADAU1860_REG_DAC_CTRL2, 0x00);
+}
+
+/* Lark SDK adi_lark_dac_set_volume(): "output dB = 24 - 0.375 * volume, if
+ * volume is 0xff, mute DAC". Clamped so a ceiling never maps onto mute. */
+uint8_t adau1860_dac_vol_code(int ceiling_db)
+{
+	if (ceiling_db > 24) {
+		ceiling_db = 24;
+	}
+	if (ceiling_db < -60) {
+		ceiling_db = -60;
+	}
+	double code = (24.0 - (double)ceiling_db) / 0.375;
+	int c = (int)(code + 0.5);
+
+	if (c > 254) {
+		c = 254;
+	}
+	if (c < 0) {
+		c = 0;
+	}
+	return (uint8_t)c;
+}
+
+int adau1860_control_set_output_ceiling_db(int ceiling_db)
+{
+	if (ceiling_db > 24 || ceiling_db < -60) {
+		return -EINVAL;
+	}
+	output_ceiling_db = ceiling_db;
+	LOG_INF("Output ceiling: %d dB (DAC_VOL0 code %u)", ceiling_db,
+		adau1860_dac_vol_code(ceiling_db));
+	if (!initialised) {
+		return 0;
+	}
+	return reg_write8(ADAU1860_REG_DAC_VOL0, adau1860_dac_vol_code(ceiling_db));
+}
+
+int adau1860_control_get_output_ceiling_db(void)
+{
+	return output_ceiling_db;
 }
 
 static int set_all_biquads_unity(void)
@@ -813,8 +868,9 @@ int adau1860_control_init(void)
 	}
 
 	initialised = true;
-	LOG_INF("ADAU1860 up: FastDSP bank %d running, DAC source %s, fs %u Hz",
-		FDSP_BANK, HAVEN_DAC_SOURCE_NAME, (unsigned int)ADAU1860_FDSP_RATE_HZ);
+	LOG_INF("ADAU1860 up: FastDSP bank %d running, DAC source %s, fs %u Hz, output ceiling %d dB",
+		FDSP_BANK, HAVEN_DAC_SOURCE_NAME, (unsigned int)ADAU1860_FDSP_RATE_HZ,
+		output_ceiling_db);
 	return 0;
 }
 

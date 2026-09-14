@@ -214,6 +214,39 @@ routes from it. **UNVERIFIED on hardware** — the register sequence and the
 bank format are pinned by host tests (`tests/host/test_eq_route.c`), not by
 a codec.
 
+## Output ceiling — the hardware layer of the safety model
+
+haven-app `docs/safety.md` describes two software layers (the app's
+`clampToneLevel()` and the firmware's `PROTOCOL_TONE_LEVEL_MAX_DB` + 3 s
+watchdog) and promises a third, hardware one. This is it — with an honest
+scope:
+
+**What it is.** `CONFIG_HAVEN_OUTPUT_CEILING_DB` (default 0 dB, range 24…−60)
+is written to `DAC_VOL0` at boot and on
+`adau1860_control_set_output_ceiling_db()`. The encoding is the Lark SDK's,
+documented exactly: *output dB = 24 − 0.375 × code; code 0xFF mutes*
+(`adi_lark_dac_set_volume`), so 0 dB → code 64, −12 dB → 96. The DAC volume
+is the last digital gain before the headphone amplifier: it sits after the
+FastDSP, after the EQ engine and after the I2S tone route alike, and nothing
+over BLE can touch it. Upstream wrote code 63 (+0.375 dB); the default here
+is 0 dB, 0.375 dB quieter.
+
+**What it is not.** It is a ceiling on *digital* level, not a limiter: a
+signal already at 0 dBFS out of the DSP is not compressed, only scaled. Its
+meaning in dB SPL at the eardrum is unknown until the acoustic calibration in
+haven-app `docs/calibration.md` has been done — after which this constant
+should be lowered to whatever makes the loudest possible output safe.
+
+**Why not the FastDSP limiter?** Upstream's program has a master-limiter slot
+(9), but its five parameter words cannot be decoded from the data we have:
+all three banks carry a single control word (`0xC8000000`) and zeros, ADI's
+Lark SDK has no per-block FastDSP helpers, and writing guessed words into a
+dynamics block could silently disable it. `tools/dsp/fdsp_limiter_decode.py`
+records the evidence and the dead end. Making that limiter configurable needs
+someone with Lark Studio to read the block's parameter layout from the tool;
+until then it stays exactly as upstream shipped it (and is not in Route B's
+path at all).
+
 ## First power-up checks (in this order)
 
 0. **Smoke test first.** Build once with `CONFIG_HAVEN_DAC_SOURCE_DMIC_DIRECT=y`.

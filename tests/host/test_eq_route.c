@@ -1,5 +1,5 @@
 /* Host tests for the hardware-EQ hear-through path ("Route B",
- * CONFIG_HAVEN_DAC_SOURCE_EQ).
+ * CONFIG_HAVEN_DAC_SOURCE_EQ) and the DAC output ceiling.
  *
  * The real adau1860_control.c is compiled with the EQ route selected, so
  * these assert the exact register traffic of configure_eq(), the 4.24
@@ -8,6 +8,7 @@
  * codec; it pins what the firmware WILL do.
  */
 #define CONFIG_HAVEN_DAC_SOURCE_EQ 1
+#define CONFIG_HAVEN_OUTPUT_CEILING_DB 0
 
 #include "test_harness.h"
 
@@ -303,6 +304,70 @@ static void test_apply_without_codec_is_math_only(void)
 	CHECK(haven_fake_i2c_log_count == 0);
 }
 
+/* ── Output ceiling (DAC_VOL0) ─────────────────────────────────────────────── */
+
+static void test_dac_vol_code_matches_lark_sdk_formula(void)
+{
+	CHECK(adau1860_dac_vol_code(24) == 0);
+	CHECK(adau1860_dac_vol_code(0) == 64);
+	CHECK(adau1860_dac_vol_code(-6) == 80);
+	CHECK(adau1860_dac_vol_code(-12) == 96);
+	CHECK(adau1860_dac_vol_code(-60) == 224);
+	/* Clamps: never 0xFF (mute), never below 0. */
+	CHECK(adau1860_dac_vol_code(-100) == 224);
+	CHECK(adau1860_dac_vol_code(100) == 0);
+}
+
+static void test_init_writes_output_ceiling_then_unmutes(void)
+{
+	haven_fake_i2c_reset();
+	initialised = false;
+	output_ceiling_db = 0;
+	CHECK(adau1860_control_init() == 0);
+
+	const struct haven_fake_i2c_xfer *vol = haven_fake_i2c_last_write(ADAU1860_REG_DAC_VOL0);
+
+	CHECK(vol && vol->data[0] == 64);
+	/* Unmute is the last DAC_CTRL2 write and comes after DAC_VOL0. */
+	size_t vol_idx = 0, unmute_idx = 0;
+
+	for (size_t i = 0; i < haven_fake_i2c_log_count; i++) {
+		if (haven_fake_i2c_log[i].reg == ADAU1860_REG_DAC_VOL0) {
+			vol_idx = i;
+		}
+		if (haven_fake_i2c_log[i].reg == ADAU1860_REG_DAC_CTRL2 && haven_fake_i2c_log[i].data[0] == 0) {
+			unmute_idx = i;
+		}
+	}
+	CHECK(vol_idx < unmute_idx);
+}
+
+static void test_set_output_ceiling_validates_and_writes(void)
+{
+	haven_fake_i2c_reset();
+	initialised = true;
+	CHECK(adau1860_control_set_output_ceiling_db(30) == -EINVAL);
+	CHECK(adau1860_control_set_output_ceiling_db(-61) == -EINVAL);
+	CHECK(haven_fake_i2c_log_count == 0);
+
+	CHECK(adau1860_control_set_output_ceiling_db(-12) == 0);
+	CHECK(adau1860_control_get_output_ceiling_db() == -12);
+
+	const struct haven_fake_i2c_xfer *vol = haven_fake_i2c_last_write(ADAU1860_REG_DAC_VOL0);
+
+	CHECK(vol && vol->data[0] == 96);
+
+	/* Before init: remembered, applied at init, no traffic now. */
+	haven_fake_i2c_reset();
+	initialised = false;
+	CHECK(adau1860_control_set_output_ceiling_db(-6) == 0);
+	CHECK(haven_fake_i2c_log_count == 0);
+	CHECK(adau1860_control_init() == 0);
+	vol = haven_fake_i2c_last_write(ADAU1860_REG_DAC_VOL0);
+	CHECK(vol && vol->data[0] == 80);
+	output_ceiling_db = 0;
+}
+
 int main(void)
 {
 	RUN(test_q24_encode_basics);
@@ -313,5 +378,8 @@ int main(void)
 	RUN(test_apply_filters_writes_inactive_bank_then_flips);
 	RUN(test_bypass_swaps_in_flat_bank);
 	RUN(test_apply_without_codec_is_math_only);
+	RUN(test_dac_vol_code_matches_lark_sdk_formula);
+	RUN(test_init_writes_output_ceiling_then_unmutes);
+	RUN(test_set_output_ceiling_validates_and_writes);
 	return haven_test_summary("test_eq_route");
 }

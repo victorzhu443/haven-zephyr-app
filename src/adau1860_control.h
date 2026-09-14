@@ -89,6 +89,16 @@ int adau1860_control_set_volume_pct(uint8_t volume_pct);
 /* Hard mute via the FastDSP MUTE slot (does not disturb the filter slots). */
 int adau1860_control_set_mute(bool muted);
 
+/* ── Hardware output ceiling ──────────────────────────────────────────────
+ * DAC digital volume (DAC_VOL0), the last gain element before the headphone
+ * amp: sits after the FastDSP, the EQ engine and the I2S tone route alike,
+ * and is not exposed over BLE. Lark SDK: dB = 24 - 0.375 * code; 0xFF mutes.
+ * Default CONFIG_HAVEN_OUTPUT_CEILING_DB (0 dB). Digital-domain only -- its
+ * meaning in dB SPL is unknown until acoustic calibration. Range 24..-60.
+ */
+int adau1860_control_set_output_ceiling_db(int ceiling_db);
+int adau1860_control_get_output_ceiling_db(void);
+uint8_t adau1860_dac_vol_code(int ceiling_db); /* exposed for tests */
 
 /* ── LDL calibration tone ─────────────────────────────────────────────────
  * Safety-critical -- see tone_safety.c, which owns validation/clamping and

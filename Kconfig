@@ -53,6 +53,20 @@ config HAVEN_DAC_SOURCE_EQ
 	  ceiling (HAVEN_OUTPUT_CEILING_DB) still is. UNVERIFIED on hardware.
 endchoice
 
+config HAVEN_OUTPUT_CEILING_DB
+	int "Hardware output ceiling: DAC digital volume in dB (24 .. -60)"
+	range -60 24
+	default 0
+	help
+	  Written to DAC_VOL0 at boot as code = (24 - dB) / 0.375 (ADI Lark SDK:
+	  "output dB = 24 - 0.375 * volume; 0xFF mutes"). Sits after every DSP
+	  path (FastDSP, EQ engine, I2S tone) and is not reachable from the app,
+	  so it is the one level cap that holds regardless of what any program
+	  or BLE client does. 0 dB reproduces upstream's setting to within
+	  0.375 dB (upstream wrote code 63 = +0.375 dB). Digital only: the
+	  mapping to dB SPL at the ear is unknown until acoustic calibration
+	  (haven-app docs/calibration.md); lower this once that is measured.
+
 config HAVEN_TONE_FULL_SCALE_DB
 	int "LDL tone: commanded level_db that maps to 0 dBFS on the I2S link"
 	range 0 120
