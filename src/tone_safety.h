@@ -33,4 +33,13 @@ void tone_safety_set_level(float level_db);
  */
 void tone_safety_stop(void);
 
+/* Optional: called (from the system workqueue) right AFTER the watchdog has
+ * auto-silenced a tone, so the transport layer can tell the app. This
+ * module deliberately knows nothing about BLE; the dependency points the
+ * other way (main.c wires the callback to an ack over NUS TX). The
+ * silencing itself never depends on the callback being set or succeeding.
+ */
+typedef void (*tone_safety_watchdog_cb_t)(void);
+void tone_safety_set_watchdog_cb(tone_safety_watchdog_cb_t cb);
+
 #endif /* HAVEN_TONE_SAFETY_H_ */

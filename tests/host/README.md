@@ -50,6 +50,7 @@ any Zephyr build.
 | File | What's tested | What's NOT tested |
 |---|---|---|
 | `protocol.c` | Full parse/clamp/reject logic, real production code, no stubs needed at all | n/a -- this file has no Zephyr/BLE dependency to begin with |
+| `ack.c` + `tone_safety.c` (`test_ack.c`) | Every ack/event string byte-for-byte (acks echo *clamped* values, integers only, `ok:false` paths for parse and driver errors), the ≤244-byte / `ACK_MAX_LEN` bound incl. worst cases, refusal of a too-small buffer; the watchdog → callback hook (fires after the stop, not on explicit stops, silencing independent of the callback) | Actual NUS delivery (`ble_transport_send` is not compiled here) |
 | `mock_audio_pipeline.c` | Real `recompute_filter`/`process_buffer`/`generate_test_tone`/`on_volume_changed`, functional DSP correctness (passband/rejection, gain scaling, memory reset) | The `k_work` scheduling/timing itself (fake no-op) |
 | `adau1860_control.c` | Real production code: RBJ math (functional), Q5.27 encoding + FastDSP sign convention pinned to upstream OpenEarable data (Equalizer.cpp golden row; shipped FastDSP banks stable only with negated feedback), full `adau1860_control_init()` register sequence against the fake codec (program/bank/run/route/unmute/unity-safeload writes, clean failure when the codec NAKs), `apply_filters` slot-by-slot payloads, bypass, volume/mute words | Real I2C timing, the codec's actual behaviour (nobody has powered one with this code yet), GPIO electrical state |
 | `tone_gen.c` + tone functions in `adau1860_control.c` (`test_tone_path.c`) | Real production code: synthesis (frequency within 0.1 % at all LDL frequencies, full-scale without wrap, exact silence at zero gain, click-free gain ramps, phase continuity across blocks), `level_db → Q15 gain` mapping, I2S configuration (master / 48 kHz / 16-bit / stereo / 4-byte blocks), block alloc→fill→write→free with no leaks, start/retune/stop/drain state machine, codec route switch order (mute → route → unmute) and restore paths (feeder callback, BLE disconnect, degraded modes) | The feeder thread's scheduling (threads never run under the fake kernel), real I2S timing, whether the codec makes the routed audio audible, and the acoustic level (see haven-app `docs/calibration.md`) |
@@ -62,5 +63,5 @@ any Zephyr build.
 ./run_tests.sh
 ```
 
-Builds and runs all six suites with plain gcc, no Zephyr toolchain
+Builds and runs all seven suites with plain gcc, no Zephyr toolchain
 required. Exits nonzero if anything fails.

@@ -15,5 +15,6 @@ target_sources(app PRIVATE
   src/mock_audio_pipeline.c
   src/settings_store.c
   src/tone_safety.c
+  src/ack.c
   src/wake_button.c
 )
