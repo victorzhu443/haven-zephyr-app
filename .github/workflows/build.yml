@@ -40,6 +40,11 @@ jobs:
           # Product: OpenEarable 2.0 / Haven board (boards/teco/openearable_v2).
           - board: openearable_v2/nrf5340/cpuapp
             name: openearable_v2
+          # Same board, Route B (hardware EQ engine hear-through) selected,
+          # so the alternative path is compiled by the real toolchain too.
+          - board: openearable_v2/nrf5340/cpuapp
+            name: openearable_v2-routeB
+            extra: -DEXTRA_CONF_FILE=routeB.conf
     container:
       image: ghcr.io/zephyrproject-rtos/ci:v0.29.3
     env:
@@ -92,7 +97,7 @@ jobs:
             --sysbuild \
             --pristine always \
             haven_zephyr_app \
-            -- -DBOARD_ROOT="$GITHUB_WORKSPACE/haven_zephyr_app"
+            -- -DBOARD_ROOT="$GITHUB_WORKSPACE/haven_zephyr_app" ${{ matrix.extra }}
 
       # No merged.hex: that's an MCUboot-merged-image convention and this
       # build has no bootloader (see sysbuild.conf) -- sysbuild instead
