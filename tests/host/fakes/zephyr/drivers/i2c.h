@@ -51,6 +51,8 @@ static inline uint8_t haven_fake_i2c_reg8(uint32_t reg)
 	switch (reg) {
 	case 0x4000C402u: /* STATUS2 */
 		return (1 << 7) | (1 << 2) | (1 << 1);
+	case 0x4000C404u: /* EQ_STATUS: clear done */
+		return 1;
 	case 0x4000C000u: /* VENDOR_ID */
 		return 0x41;
 	case 0x4000C001u:

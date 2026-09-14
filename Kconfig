@@ -39,6 +39,18 @@ config HAVEN_DAC_SOURCE_DMIC_DIRECT
 	  the mic, clocks, DAC and receiver all work and any later silence is a
 	  FastDSP program/routing question, not hardware. No filters and no
 	  limiter are in this path -- never wear the device in this mode.
+
+config HAVEN_DAC_SOURCE_EQ
+	bool "Hardware EQ engine fed from DMIC0 (Route B): hear-through without a FastDSP program"
+	help
+	  Routes the PDM mic into the codec's dedicated EQ engine (EQ_ROUTE = 71)
+	  and the EQ output to the DAC (DAC_ROUTE0 = 75). Haven's five bands are
+	  written into the EQ's parameter banks (six biquad stages, 28-bit 4.24
+	  words, [-a1,-a2,b0,b1,b2] -- see tools/dsp/eq_bank_decode.py) with
+	  bank-flip updates. Independent of the FastDSP program's internal
+	  routing, so it is the fallback if FastDSP hear-through is silent. The
+	  FastDSP's expander/limiter are NOT in this path; the DAC output
+	  ceiling (HAVEN_OUTPUT_CEILING_DB) still is. UNVERIFIED on hardware.
 endchoice
 
 config HAVEN_TONE_FULL_SCALE_DB

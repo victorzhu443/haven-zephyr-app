@@ -89,6 +89,7 @@ int adau1860_control_set_volume_pct(uint8_t volume_pct);
 /* Hard mute via the FastDSP MUTE slot (does not disturb the filter slots). */
 int adau1860_control_set_mute(bool muted);
 
+
 /* ── LDL calibration tone ─────────────────────────────────────────────────
  * Safety-critical -- see tone_safety.c, which owns validation/clamping and
  * the auto-stop watchdog. The FastDSP program has no oscillator, so the

@@ -10,6 +10,7 @@
 #include "adau1860_control.h"
 #include "adau1860_regs.h"
 #include "lark_fdsp_program.h"
+#include "lark_eq_program.h"
 #include "tone_gen.h"
 
 #include <errno.h>
@@ -45,9 +46,19 @@ LOG_MODULE_REGISTER(adau1860_control, LOG_LEVEL_INF);
  */
 #if defined(CONFIG_HAVEN_DAC_SOURCE_DMIC_DIRECT)
 #define HAVEN_DAC_SOURCE_ROUTE ADAU1860_DAC_ROUTE_DMIC(0)
+#define HAVEN_DAC_SOURCE_NAME  "DMIC0 direct (smoke test, no DSP)"
+#elif defined(CONFIG_HAVEN_DAC_SOURCE_EQ)
+#define HAVEN_DAC_SOURCE_ROUTE ADAU1860_DAC_ROUTE_EQ
+#define HAVEN_DAC_SOURCE_NAME  "EQ engine <- DMIC0 (Route B, 6 biquads)"
+#define HAVEN_USE_EQ_ENGINE 1
 #else
 #define HAVEN_DAC_SOURCE_ROUTE ADAU1860_DAC_ROUTE_FDSP_CH(0)
+#define HAVEN_DAC_SOURCE_NAME  "FastDSP ch0 (5 biquads)"
 #endif
+#ifndef HAVEN_USE_EQ_ENGINE
+#define HAVEN_USE_EQ_ENGINE 0
+#endif
+
 
 /* LDL tone: commanded level that maps to 0 dBFS on the I2S link. Nominal
  * until acoustic calibration (haven-app docs/calibration.md) replaces it. */
@@ -144,6 +155,27 @@ static int mem_write_words(uint32_t addr, const uint32_t *words, size_t count)
 		sys_put_le32(words[i], &buf[4 * i]);
 	}
 	return reg_write(addr, buf, count * 4);
+}
+
+/* Memory images longer than one I2C payload (EQ program: 57 words, EQ bank:
+ * 35 words) go out as consecutive 16-word writes; the memories are
+ * byte-addressed at 4 bytes per word, exactly like the FastDSP banks. */
+static int mem_write_words_chunked(uint32_t addr, const uint32_t *words, size_t count)
+{
+	const size_t chunk = MAX_PAYLOAD / 4;
+
+	while (count) {
+		size_t n = count < chunk ? count : chunk;
+		int err = mem_write_words(addr, words, n);
+
+		if (err) {
+			return err;
+		}
+		addr += (uint32_t)(n * 4);
+		words += n;
+		count -= n;
+	}
+	return 0;
 }
 
 /* Poll STATUS2 until every bit in `mask` is set. Upstream spins forever
@@ -489,6 +521,155 @@ static int set_all_biquads_unity(void)
 	return 0;
 }
 
+/* ── Hardware EQ engine (Route B) ────────────────────────────────────────────
+ * A second, independent hear-through path: DMIC0 -> EQ engine -> DAC, driven
+ * entirely by registers and two parameter banks -- no FastDSP program in the
+ * loop. Kept as a build-time alternative (CONFIG_HAVEN_DAC_SOURCE_EQ) so first
+ * power-up has a fallback if the FastDSP program's internal routing turns out
+ * not to be what the bank decode implies.
+ *
+ * Program: upstream's 57-word EQ program verbatim. Parameter format:
+ * 28-bit two's complement 4.24, biquad words [-a1, -a2, b0, b1, b2], six
+ * biquads then five unity gain words (tools/dsp/eq_bank_decode.py -- the only
+ * format under which upstream's shipped banks are all stable, its unity
+ * groups are identities, and its real stages decode to whole-dB cuts).
+ * Updates write the INACTIVE bank in full and then flip EQ_CFG.BANK_SEL, so
+ * the engine never runs on a half-written set (the EQ has no safeload). The
+ * EQ runs at its source's rate (UG-2017: fs = EQ_ROUTE source), i.e. the
+ * DMIC's 192 kHz here -- the same ADAU1860_FDSP_RATE_HZ the FastDSP math
+ * uses. UNVERIFIED on hardware.
+ */
+static uint8_t eq_active_bank; /* 0 or 1: which bank EQ_CFG currently selects */
+
+/* 28-bit two's complement, 24 fractional bits, saturating; upper 4 bits 0. */
+static uint32_t q24_encode(double v)
+{
+	double scaled = v * 16777216.0; /* 2^24 */
+	int32_t i;
+
+	if (scaled >= 134217727.0) {
+		i = 134217727;          /* 2^27 - 1 */
+	} else if (scaled <= -134217728.0) {
+		i = -134217728;         /* -2^27 */
+	} else {
+		i = (int32_t)(scaled >= 0.0 ? scaled + 0.5 : scaled - 0.5);
+	}
+	return (uint32_t)i & 0x0FFFFFFFu;
+}
+
+static void biquad_to_eq(const struct adau1860_biquad *c, uint32_t out[LARK_EQ_PARAMS_PER_BIQUAD])
+{
+	out[0] = q24_encode(-c->a1);
+	out[1] = q24_encode(-c->a2);
+	out[2] = q24_encode(c->b0);
+	out[3] = q24_encode(c->b1);
+	out[4] = q24_encode(c->b2);
+}
+
+static void eq_unity_biquad(uint32_t out[LARK_EQ_PARAMS_PER_BIQUAD])
+{
+	out[0] = 0;
+	out[1] = 0;
+	out[2] = ADAU1860_EQ_Q24_ONE;
+	out[3] = 0;
+	out[4] = 0;
+}
+
+/* Build a whole 35-word bank: bands into biquads 0..count-1, unity for the
+ * rest, five unity gain words. NULL bands / count 0 = flat. */
+static void eq_build_bank(const struct filter_band *bands, size_t count,
+			  uint32_t bank[LARK_EQ_BANK_WORDS])
+{
+	for (size_t i = 0; i < LARK_EQ_NUM_BIQUADS; i++) {
+		uint32_t *w = &bank[i * LARK_EQ_PARAMS_PER_BIQUAD];
+
+		if (bands && i < count) {
+			struct adau1860_biquad c;
+
+			calc_band_coeffs(&bands[i], &c);
+			biquad_to_eq(&c, w);
+		} else {
+			eq_unity_biquad(w);
+		}
+	}
+	for (size_t i = 0; i < LARK_EQ_GAIN_WORDS; i++) {
+		bank[LARK_EQ_NUM_BIQUADS * LARK_EQ_PARAMS_PER_BIQUAD + i] = ADAU1860_EQ_Q24_ONE;
+	}
+}
+
+/* Write `bank` to the bank the engine is NOT using, then make it active. */
+static int eq_swap_in(const uint32_t bank[LARK_EQ_BANK_WORDS])
+{
+	uint8_t next = eq_active_bank ? 0 : 1;
+	int err = mem_write_words_chunked(ADAU1860_EQ_BANK(next), bank, LARK_EQ_BANK_WORDS);
+
+	if (err) {
+		return err;
+	}
+	err = reg_write8(ADAU1860_REG_EQ_CFG,
+			 ADAU1860_EQ_CFG_RUN | (next ? ADAU1860_EQ_CFG_BANK_SEL : 0));
+	if (err) {
+		return err;
+	}
+	eq_active_bank = next;
+	return 0;
+}
+
+/* Upstream setup_EQ() with the input moved from ASRCI0 (music) to DMIC0. */
+static int configure_eq(void)
+{
+	uint32_t flat[LARK_EQ_BANK_WORDS];
+	int err = reg_write8(ADAU1860_REG_EQ_CFG, 0x00); /* stop */
+
+	if (err) {
+		return err;
+	}
+	err = reg_write8(ADAU1860_REG_EQ_CFG, ADAU1860_EQ_CFG_CLEAR);
+	if (err) {
+		return err;
+	}
+	/* Bounded wait for EQ_STATUS.CLEAR_DONE (upstream spins forever). */
+	{
+		int64_t deadline = k_uptime_get() + 200;
+
+		for (;;) {
+			uint8_t st = 0;
+
+			err = reg_read(ADAU1860_REG_EQ_STATUS, &st, 1);
+			if (err) {
+				return err;
+			}
+			if (st & ADAU1860_EQ_STATUS_CLEAR_DONE) {
+				break;
+			}
+			if (k_uptime_get() > deadline) {
+				LOG_ERR("Timed out waiting for EQ parameter-RAM clear (EQ_STATUS=0x%02x)", st);
+				return -ETIMEDOUT;
+			}
+			k_usleep(100);
+		}
+	}
+	err = reg_write8(ADAU1860_REG_EQ_ROUTE, ADAU1860_EQ_ROUTE_DMIC(0));
+	if (err) {
+		return err;
+	}
+	err = mem_write_words_chunked(ADAU1860_EQ_PROG_MEM, lark_eq_program, LARK_EQ_PROGRAM_WORDS);
+	if (err) {
+		return err;
+	}
+	eq_build_bank(NULL, 0, flat);
+	err = mem_write_words_chunked(ADAU1860_EQ_BANK_0, flat, LARK_EQ_BANK_WORDS);
+	if (err) {
+		return err;
+	}
+	err = mem_write_words_chunked(ADAU1860_EQ_BANK_1, flat, LARK_EQ_BANK_WORDS);
+	if (err) {
+		return err;
+	}
+	eq_active_bank = 0;
+	return reg_write8(ADAU1860_REG_EQ_CFG, ADAU1860_EQ_CFG_RUN);
+}
+
 /* ── LDL tone: codec-side routing ───────────────────────────────────────────
  * The tone itself is synthesised on the nRF (tone_gen.c) and arrives on
  * serial port 0 -> input ASRC 0, both already powered by configure_routing().
@@ -612,23 +793,28 @@ int adau1860_control_init(void)
 	if (err) {
 		return err;
 	}
+	if (HAVEN_USE_EQ_ENGINE) {
+		err = configure_eq();
+		if (err) {
+			return err;
+		}
+	}
 	err = configure_dac();
 	if (err) {
 		return err;
 	}
 	/* Boot flat: upstream's bank ships a transparency EQ in slots 0-4;
 	 * Haven's bands replace it, so start from pass-through rather than
-	 * someone else's curve. */
+	 * someone else's curve. (Done even on the EQ route -- the FastDSP keeps
+	 * running so its output is well-defined if anything routes from it.) */
 	err = set_all_biquads_unity();
 	if (err) {
 		return err;
 	}
 
 	initialised = true;
-	LOG_INF("ADAU1860 up: FastDSP bank %d running, DAC source %s, fs %u Hz", FDSP_BANK,
-		IS_ENABLED(CONFIG_HAVEN_DAC_SOURCE_DMIC_DIRECT) ? "DMIC0 direct (smoke test, no DSP)"
-								  : "FastDSP ch0 (5 biquads)",
-		(unsigned int)ADAU1860_FDSP_RATE_HZ);
+	LOG_INF("ADAU1860 up: FastDSP bank %d running, DAC source %s, fs %u Hz",
+		FDSP_BANK, HAVEN_DAC_SOURCE_NAME, (unsigned int)ADAU1860_FDSP_RATE_HZ);
 	return 0;
 }
 
@@ -638,6 +824,17 @@ int adau1860_control_apply_filters(const struct filter_band *bands, size_t count
 
 	if (count > PROTOCOL_MAX_BANDS) {
 		count = PROTOCOL_MAX_BANDS;
+	}
+
+	if (HAVEN_USE_EQ_ENGINE) {
+		uint32_t bank[LARK_EQ_BANK_WORDS];
+
+		for (size_t i = 0; i < count; i++) {
+			LOG_INF("Band %u: f0=%.1f Hz Q=%.1f atten=%.1f dB (EQ engine)", (unsigned int)i,
+				(double)bands[i].f0_hz, (double)bands[i].q, (double)bands[i].atten_db);
+		}
+		eq_build_bank(bands, count, bank);
+		return initialised ? eq_swap_in(bank) : 0;
 	}
 
 	for (uint8_t slot = 0; slot < LARK_FDSP_NUM_BIQUADS; slot++) {
@@ -670,6 +867,12 @@ int adau1860_control_set_bypass(bool enabled)
 	if (!enabled || !initialised) {
 		/* Leaving bypass is main.c re-sending the bands. */
 		return 0;
+	}
+	if (HAVEN_USE_EQ_ENGINE) {
+		uint32_t flat[LARK_EQ_BANK_WORDS];
+
+		eq_build_bank(NULL, 0, flat);
+		return eq_swap_in(flat);
 	}
 	return set_all_biquads_unity();
 }

@@ -14,6 +14,7 @@
 #include <string.h>
 
 #include "../../src/lark_fdsp_program.c"
+#include "../../src/lark_eq_program.c"
 #include "../../src/tone_gen.c"
 #include "../../src/adau1860_control.c"
 

@@ -169,6 +169,51 @@ raw mic with no DSP (`CONFIG_HAVEN_DAC_SOURCE_DMIC_DIRECT`, smoke test), and
 that needs no FastDSP program at all (untested; EQ coefficient format
 unverified).
 
+## Route B: the hardware EQ engine (`CONFIG_HAVEN_DAC_SOURCE_EQ`)
+
+A second, independent hear-through path that needs **no FastDSP program**:
+`EQ_ROUTE = 71` (DMIC0) → the codec's dedicated EQ engine → `DAC_ROUTE0 = 75`.
+It exists because the FastDSP route's one unverified assumption is the
+routing inside upstream's 12 program words; if hear-through is silent there,
+this route does not share that failure mode.
+
+What the firmware does (`configure_eq()`, `eq_swap_in()`):
+
+1. `EQ_CFG ← 0x00` (stop), `EQ_CFG ← 0x10` (clear), poll `EQ_STATUS[0]`
+   (bounded, 200 ms) — upstream's `setup_EQ()` sequence.
+2. `EQ_ROUTE ← 71` (upstream used 64 = ASRCI0, its music path).
+3. Program: upstream's 57-word `eq_program` verbatim (`src/lark_eq_program.c`),
+   written to `0x4000A000` in 16-word chunks.
+4. Both parameter banks (`0x4000A200`, `0x4000A400`) written flat, then
+   `EQ_CFG ← 0x01` (run, bank 0).
+5. `apply_filters()`/`set_bypass()` build a complete 35-word bank — Haven's
+   bands in stages 0..n-1, unity for the rest, five unity gain words — write
+   it to the **inactive** bank, then flip `EQ_CFG.BANK_SEL` (bit 1). The EQ
+   has no safeload; the bank flip is the atomic swap.
+
+**Coefficient format — different from the FastDSP.** `tools/dsp/eq_bank_decode.py`
+tries every (number format × word order × feedback sign) against upstream's
+two shipped banks; the only combination under which every stage is stable,
+the unity groups `{0,0,0x01000000,0,0}` are identities and the real stages
+are whole-dB EQ cuts is **28-bit two's complement 4.24** (1.0 = `0x01000000`,
+bits 28–31 zero) with words **`[-a1, -a2, b0, b1, b2]`**. Upstream's bank 0
+decodes to −10 (low shelf), −8, −2.5 and −7 dB stages — the same gain values
+as its nRF-side software EQ table, at a different tuning. Confidence: high
+for format and sign; the b0/b2 swap is magnitude-identical and rejected only
+because it would make upstream's "unity" group a two-sample delay.
+
+**Sample rate.** The EQ runs at its source's rate (UG-2017: "set fs to be
+same as the equalizer source, EQ_ROUTE"); with DMIC0 that is 192 kHz, the
+same `CONFIG_HAVEN_FDSP_RATE_HZ` the FastDSP math uses. Six stages are
+available; Haven uses up to five.
+
+**Not in this path:** the FastDSP's expander and master limiter (they sit in
+the FastDSP program). The DAC output ceiling (below) still is. The FastDSP
+keeps running with unity biquads so its output is well-defined if anything
+routes from it. **UNVERIFIED on hardware** — the register sequence and the
+bank format are pinned by host tests (`tests/host/test_eq_route.c`), not by
+a codec.
+
 ## First power-up checks (in this order)
 
 0. **Smoke test first.** Build once with `CONFIG_HAVEN_DAC_SOURCE_DMIC_DIRECT=y`.
@@ -182,6 +227,9 @@ unverified).
 2. No `Timed out waiting for ...` — clocks came up.
 3. With no phone connected: speak near the device — flat hear-through means
    the mic → FDSP → DAC path is real.
+   **Silent here but the step-0 smoke test worked?** Rebuild with
+   `CONFIG_HAVEN_DAC_SOURCE_EQ=y` (Route B): if that is audible, the FastDSP
+   program's internal routing is the problem, not the hardware.
 4. Send `{"type":"MULTI_FILTER","bands":[{"f0":1000,"Q":10}]}` and sweep a
    tone from a speaker. Notch at 1000 Hz: rate and routing are right.
    Notch at 250 Hz: the FDSP frame rate is 48 kHz, not 192 kHz — set

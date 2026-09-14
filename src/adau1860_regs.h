@@ -46,6 +46,21 @@
 #define ADAU1860_EQ_PROG_MEM          0x4000A000u
 #define ADAU1860_EQ_BANK_0            0x4000A200u
 #define ADAU1860_EQ_BANK_1            0x4000A400u
+#define ADAU1860_EQ_BANK(k)           ((k) ? ADAU1860_EQ_BANK_1 : ADAU1860_EQ_BANK_0)
+
+/* EQ engine control bits (EQ_CFG 0x4000C0D2 / EQ_STATUS 0x4000C404), per the
+ * Lark SDK bit-field header and upstream setup_EQ(): stop = 0, clear = 0x10
+ * then poll EQ_STATUS bit 0, run = 0x01; bit 1 selects the parameter bank. */
+#define ADAU1860_EQ_CFG_RUN           (1u << 0)
+#define ADAU1860_EQ_CFG_BANK_SEL      (1u << 1)
+#define ADAU1860_EQ_CFG_CLEAR         (1u << 4)
+#define ADAU1860_EQ_STATUS_CLEAR_DONE (1u << 0)
+
+/* EQ engine parameter format: 28-bit two's complement, 24 fractional bits
+ * (tools/dsp/eq_bank_decode.py). 1.0 = 0x01000000; biquad word order is
+ * [-a1, -a2, b0, b1, b2]. Different from the FastDSP's Q5.27 / [b0 b1 b2
+ * -a1 -a2] -- two engines, two formats. */
+#define ADAU1860_EQ_Q24_ONE           0x01000000u
 
 /* Route selectors. The number space is PER MUX (the same integer means a
  * different source at a different destination). Values below are the ones

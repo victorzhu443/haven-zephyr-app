@@ -20,6 +20,7 @@
 #include <string.h>
 
 #include "../../src/lark_fdsp_program.c"
+#include "../../src/lark_eq_program.c"
 #include "../../src/tone_gen.c" /* adau1860_control.c's tone functions call into it */
 #include "../../src/adau1860_control.c"
 
