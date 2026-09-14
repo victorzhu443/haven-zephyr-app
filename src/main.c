@@ -13,6 +13,7 @@
 #include "mock_audio_pipeline.h"
 #include "protocol.h"
 #include "settings_store.h"
+#include "tone_gen.h"
 #include "tone_safety.h"
 #include "wake_button.h"
 
@@ -71,6 +72,14 @@ int main(void)
 
 	if (err) {
 		LOG_ERR("ADAU1860 control init failed (err %d)", err);
+	}
+
+	/* nRF-side LDL tone generator (I2S0 master). Independent of the codec
+	 * init above: on a DK without a codec it still streams, which is how
+	 * the I2S clocking gets checked with a scope. */
+	err = tone_gen_init();
+	if (err) {
+		LOG_WRN("Tone generator init failed (err %d) -- TONE_* will be no-ops", err);
 	}
 
 	ble_transport_set_conn_callbacks(adau1860_control_on_ble_connected,
