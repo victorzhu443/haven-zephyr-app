@@ -1,6 +1,9 @@
-# Builds the app-core image for nRF5340 DK on every push to master (this
-# repo's default branch — and PRs targeting it, so a break surfaces before
-# merge, not after).
+# Builds the app-core image (plus the net-core ipc_radio image via sysbuild)
+# for every board target this firmware supports, on every push to master
+# (this repo's default branch) and on PRs targeting it — so a break surfaces
+# before merge, not after. `workflow_dispatch` lets a feature branch be
+# built on demand (this is the only compiler most contributors have for
+# Zephyr: the toolchain isn't assumed locally).
 #
 # NOTE: For C/Zephyr there's no separate "typecheck" phase distinct from
 # compilation the way there is for TS — `west build` performing a full GCC
@@ -22,10 +25,26 @@ on:
     branches: [master]
   pull_request:
     branches: [master]
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Bench: nRF5340 DK + an ADAU1860 eval board on the Arduino header.
+          - board: nrf5340dk/nrf5340/cpuapp
+            name: nrf5340dk
+          # Product: OpenEarable 2.0 / Haven board (boards/teco/openearable_v2).
+          - board: openearable_v2/nrf5340/cpuapp
+            name: openearable_v2
+          # Same board, Route B (hardware EQ engine hear-through) selected,
+          # so the alternative path is compiled by the real toolchain too.
+          - board: openearable_v2/nrf5340/cpuapp
+            name: openearable_v2-routeB
+            extra: -DEXTRA_CONF_FILE=routeB.conf
     container:
       image: ghcr.io/zephyrproject-rtos/ci:v0.29.3
     env:
@@ -50,13 +69,17 @@ jobs:
           # the whole time.
           persist-credentials: false
 
+      - name: Host unit tests (plain gcc, no Zephyr)
+        run: |
+          cd haven_zephyr_app/tests/host && ./run_tests.sh
+
       - name: Initialize west workspace
         run: |
           west init -l haven_zephyr_app
           west update --narrow -o=--depth=1
           west zephyr-export
 
-      - name: Build (nRF5340 DK, application core + net-core ipc_radio via sysbuild)
+      - name: Build ${{ matrix.name }} (application core + net-core ipc_radio via sysbuild)
         run: |
           # --pristine bare (no value) is only valid on west versions where
           # it's an optional-argument flag; this container's west requires
@@ -64,11 +87,17 @@ jobs:
           # source_dir positional as its value instead (build 32872241192,
           # "invalid choice: 'haven_zephyr_app'"). Spelling out `always`
           # works on both.
+          # BOARD_ROOT: sysbuild resolves the board *before* it configures the
+          # application, so the app's own boards/ directory (where the in-tree
+          # openearable_v2 board lives) is not searched unless it is named as
+          # a board root. zephyr/module.yml declares it too; passing it here
+          # as well keeps the build independent of west's module discovery.
           west build \
-            --board nrf5340dk/nrf5340/cpuapp \
+            --board ${{ matrix.board }} \
             --sysbuild \
             --pristine always \
-            haven_zephyr_app
+            haven_zephyr_app \
+            -- -DBOARD_ROOT="$GITHUB_WORKSPACE/haven_zephyr_app" ${{ matrix.extra }}
 
       # No merged.hex: that's an MCUboot-merged-image convention and this
       # build has no bootloader (see sysbuild.conf) -- sysbuild instead
@@ -78,7 +107,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: haven-firmware-nrf5340dk
+          name: haven-firmware-${{ matrix.name }}
           path: |
             build/haven_zephyr_app/zephyr/zephyr.hex
             build/haven_zephyr_app/zephyr/zephyr.elf

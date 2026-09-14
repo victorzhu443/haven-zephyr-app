@@ -7,7 +7,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 BUILD_DIR="$(mktemp -d)"
 trap 'rm -rf "$BUILD_DIR"' EXIT
 
-TESTS="test_protocol test_biquad_pipeline test_adau1860_coeffs test_gatt_validation test_settings_dispatch"
+TESTS="test_protocol test_biquad_pipeline test_adau1860_coeffs test_eq_route test_tone_path test_gatt_validation test_settings_dispatch"
 FAIL=0
 
 for t in $TESTS; do
