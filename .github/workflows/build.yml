@@ -40,6 +40,13 @@ jobs:
           # Product: OpenEarable 2.0 / Haven board (boards/teco/openearable_v2).
           - board: openearable_v2/nrf5340/cpuapp
             name: openearable_v2
+          # LFRC fallback build (README "LFRC fallback"): same DK target with
+          # -DFILE_SUFFIX=lfrc, which pulls in boards/*_lfrc.conf on the app
+          # core and sysbuild/ipc_radio_lfrc.conf on the net core. The
+          # verify step below proves BOTH images actually got the RC clock.
+          - board: nrf5340dk/nrf5340/cpuapp
+            name: nrf5340dk-lfrc
+            suffix: lfrc
     container:
       image: ghcr.io/zephyrproject-rtos/ci:v0.29.3
     env:
@@ -92,7 +99,21 @@ jobs:
             --sysbuild \
             --pristine always \
             haven_zephyr_app \
-            -- -DBOARD_ROOT="$GITHUB_WORKSPACE/haven_zephyr_app"
+            -- -DBOARD_ROOT="$GITHUB_WORKSPACE/haven_zephyr_app" \
+               ${{ matrix.suffix && format('-DFILE_SUFFIX={0}', matrix.suffix) || '' }}
+
+      - name: Verify LFRC fragments reached both cores
+        if: matrix.suffix == 'lfrc'
+        run: |
+          set -e
+          for cfg in build/haven_zephyr_app/zephyr/.config build/ipc_radio/zephyr/.config; do
+            echo "== $cfg"
+            grep -E '^CONFIG_CLOCK_CONTROL_NRF_K32SRC_(RC|XTAL|RC_CALIBRATION)=' "$cfg" || true
+            grep -q '^CONFIG_CLOCK_CONTROL_NRF_K32SRC_RC=y' "$cfg" || { echo "RC source not selected in $cfg"; exit 1; }
+            if grep -q '^CONFIG_CLOCK_CONTROL_NRF_K32SRC_XTAL=y' "$cfg"; then echo "XTAL still selected in $cfg"; exit 1; fi
+          done
+          grep -q '^CONFIG_CLOCK_CONTROL_NRF_K32SRC_RC_CALIBRATION=y' build/haven_zephyr_app/zephyr/.config \
+            || { echo "RC calibration not enabled on the app core"; exit 1; }
 
       # No merged.hex: that's an MCUboot-merged-image convention and this
       # build has no bootloader (see sysbuild.conf) -- sysbuild instead

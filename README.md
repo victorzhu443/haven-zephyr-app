@@ -153,6 +153,35 @@ explicitly works regardless of how west discovered the app):
 Neither is cheap; the eval-board route is the one that doesn't wait on a
 PCB fab and exercises every register this firmware touches.
 
+## LFRC fallback (no working 32.768 kHz crystal)
+
+The nRF5340's BLE sleep clock normally comes from the external 32.768 kHz
+crystal (X1). If a board's crystal does not oscillate — the 5× bench board
+had X1 30 mm from the module before haven-dev-board-kicad PR #5 (issue #4) —
+BLE never comes up: nothing advertises, or `bt_enable()` never returns.
+Build with the internal RC oscillator instead:
+
+```sh
+west build --board nrf5340dk/nrf5340/cpuapp --sysbuild --pristine always haven_zephyr_app \
+  -- -DBOARD_ROOT="$(pwd)/haven_zephyr_app" -DFILE_SUFFIX=lfrc
+```
+
+`-DFILE_SUFFIX=lfrc` makes Zephyr pick up `boards/<board>_lfrc.conf` for the
+application core (RC source + calibration against the HFXO) and makes
+sysbuild apply `sysbuild/ipc_radio_lfrc.conf` to the network core, which
+runs the BLE controller and must be told the same clock source. CI's
+`nrf5340dk-lfrc` job builds this variant and greps both images' `.config`
+for `CONFIG_CLOCK_CONTROL_NRF_K32SRC_RC=y`. Accuracy drops to the 250 ppm
+class (still inside BLE's 500 ppm budget) and power gets worse; this is for
+getting a bench alive, not for the product — fix the crystal placement.
+
+## Device → app acks
+
+Every JSON line the app writes gets one JSON ack back on NUS TX, and the
+firmware sends a `boot` event on connect and a `tone_watchdog` event when it
+auto-silences a tone. Schema and rules: `docs/nus-acks.md`; what the app
+should do with them: `docs/app-side.md`.
+
 ## CI
 
 `.github/workflows/build.yml` runs the host unit tests and then this same
