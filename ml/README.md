@@ -104,3 +104,15 @@ order (checked against a manual byte-by-byte packing, not just
 frequency-detection heuristic against synthetic single- and dual-tone test
 signals (including confirming `search_min_hz`/`search_max_hz` actually
 changes which tone gets picked as dominant).
+
+## `experiments/`
+
+Reproducible one-off feasibility checks that aren't part of the shipped
+tool and aren't in `requirements.txt` (each script says what extra package
+to `pip install` to run it). `rnnoise_feasibility_check.py`: tested whether
+denoising a recording with RNNoise before running `analyze.py` on it would
+help — real result: RNNoise suppressed 63-99.9% of the energy in every
+non-speech test signal tried (a pure tone, an alarm-like warble), because
+it's a *speech* denoiser and this tool's whole job is finding narrowband,
+non-speech tones. See `ML_RL_FEASIBILITY.md` (repo root) for the full
+writeup; that recommendation has been withdrawn as a result.

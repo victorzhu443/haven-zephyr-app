@@ -1,0 +1,7 @@
+# Makes this application a Zephyr module so west/CMake pick up the in-tree
+# board definition (boards/teco/openearable_v2) and bindings (dts/bindings)
+# without every build having to pass -DBOARD_ROOT / -DDTS_ROOT by hand.
+build:
+  settings:
+    board_root: .
+    dts_root: .

@@ -13,13 +13,11 @@ tracked backlog — nothing here is scheduled or committed to.
 
 ## Firmware
 
-- **Auto-apply the ML tool's output over BLE.** `ml/` already produces the
-  exact bytes the FreqRange characteristic expects, but nothing writes them
-  yet. A small bench script that runs `analyze.py` on a recording and
-  pushes the result straight to a connected board (over the same Web
-  Bluetooth path `tools/ble_bench_test.html` already uses) would close the
-  loop from "recorded a problem sound" to "board is filtering for it" in
-  one step.
+- ~~**Auto-apply the ML tool's output over BLE.**~~ Done — see
+  `ml/apply_over_ble.py`. Analysis + encoding + argument handling are
+  unit-tested; the actual radio write hasn't been exercised against a real
+  board (no Bluetooth adapter in the environment this was built in), so
+  verify that leg for real before relying on it unattended.
 - **CONFIG_PM_DEVICE for the I2C/I2S buses.** Once the real ADAU1860 driver
   work starts, suspending those peripherals between transactions (rather
   than just the CPU-idle savings `CONFIG_PM=y` gives today) would matter
@@ -27,22 +25,30 @@ tracked backlog — nothing here is scheduled or committed to.
 
 ## App / UX
 
-- **Surface a "quiet mode" toggle tied to the new adaptive advertising.**
-  Right now the fast→slow advertising transition is invisible to the user.
-  A small indicator (or an explicit low-power mode the user can force) would
-  make the tradeoff — slower reconnect, longer battery life — something the
-  wearer chooses rather than something that just happens.
-- **LDL result history + trend view.** The app already runs the guided LDL
-  test and gets a result; nothing currently stores more than the most
-  recent one. Even a simple list of past runs would make hearing changes
-  over time visible, which is the actual point of periodic hearing tests.
+- ~~**Surface a "quiet mode" toggle tied to the new adaptive advertising.**~~
+  Done (presentation-only, not a real device-state read — see below) — see
+  `haven_custom_app`'s `ConnectionBar`. Shows a note after ~5 minutes
+  disconnected explaining the reconnect delay; there's no BLE
+  characteristic exposing firmware's real advertising-interval state, so
+  this is a client-side approximation of `BLE_IDLE_ADV_TIMEOUT_MS`, not an
+  actual read. A real toggle (forcing low-power mode, not just narrating
+  it) is still open if that's wanted later.
+- ~~**LDL result history + trend view.**~~ Done — see `haven_custom_app`'s
+  `LdlHistoryStore` and `LdlHistory` component. Persists each completed run
+  (timestamp + results, capped at 20) and shows the 5 most recent plus a
+  simple improving/steady/more-sensitive trend. Aborted-early runs aren't
+  saved, only full passes through every test frequency.
 
 ## Hardware
 
-- **Resolve the BMX160/BMI160 schematic-vs-BOM mismatch.** Already flagged
-  earlier this session as real but currently dormant (no firmware code
-  touches IMU/accelerometer/gyro functionality yet) — worth fixing before
-  it's forgotten and someone orders the wrong part for a production run.
+- ~~**Resolve the BMX160/BMI160 schematic-vs-BOM mismatch.**~~ Done — see
+  `HAVEN_HARDWARE_REVIEW.md` §8 in `haven_dev_board_kicad`. Wiring
+  inspection confirmed the sourced part is BMI160 (6-axis, no
+  magnetometer): its ASDX/ASCX aux-interface pins are tied to GND, which
+  is BMI160's documented reference pattern for "no external magnetometer,"
+  not a valid way to wire a BMX160. Schematic `Value` corrected to match
+  the sourced part. No firmware touches IMU functionality yet, so this
+  was purely a BOM-accuracy fix, not a functional one.
 
 ## ML / DSP
 

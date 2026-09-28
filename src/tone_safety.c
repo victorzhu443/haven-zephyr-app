@@ -20,6 +20,7 @@ LOG_MODULE_REGISTER(tone_safety, LOG_LEVEL_INF);
 #define TONE_WATCHDOG_TIMEOUT_MS 3000
 
 static bool tone_active;
+static tone_safety_watchdog_cb_t watchdog_cb;
 
 static void watchdog_fired(struct k_work *work)
 {
@@ -27,6 +28,17 @@ static void watchdog_fired(struct k_work *work)
 	LOG_WRN("Tone watchdog fired -- no TONE_LEVEL keep-alive within %d ms, "
 		"auto-silencing", TONE_WATCHDOG_TIMEOUT_MS);
 	tone_safety_stop();
+	/* After the stop, so the tone is already silent by the time anyone
+	 * hears about it -- the notification is informational, never a step
+	 * the silencing depends on. */
+	if (watchdog_cb) {
+		watchdog_cb();
+	}
+}
+
+void tone_safety_set_watchdog_cb(tone_safety_watchdog_cb_t cb)
+{
+	watchdog_cb = cb;
 }
 
 static K_WORK_DELAYABLE_DEFINE(watchdog, watchdog_fired);

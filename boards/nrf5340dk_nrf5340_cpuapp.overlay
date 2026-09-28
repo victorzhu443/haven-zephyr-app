@@ -1,45 +1,30 @@
 /*
- * nRF5340 DK wiring for the ADAU1860 DSP — application core.
+ * nRF5340 DK bench wiring for an ADAU1860 (e.g. EVAL-ADAU1860EBZ) —
+ * application core.
  *
- * Control port : I2C1 (Arduino-header pins on the DK; ADAU1860 at 0x64)
- * Audio data   : I2S0 (multichannel PCM to/from the DSP)
+ * Control port : I2C1 (Arduino-header SDA/SCL on the DK; ADAU1860 at 0x64)
+ * Enable pin   : Arduino D2 = P1.04 → the codec's PD/enable (net DAC_ENABLE
+ *                on the real board). Must be driven before any I2C traffic;
+ *                adau1860_control.c does that.
+ * Audio data   : I2S0, nRF5340 as MASTER — carries only the LDL calibration
+ *                tone (tone_gen.c, 48 kHz 16-bit stereo). The hear-through
+ *                path is mic → FastDSP → DAC entirely inside the codec.
  *
- * This enables the DK's own default pin mapping for each peripheral rather
- * than hand-specifying pinctrl — there is no production PCB yet. Once the
- * Haven dev board schematic lands, replace this file's bus choice and add a
- * board-specific overlay alongside it; don't edit pins here blind.
+ * This DK is only a bench for the codec's control plane. The real target is
+ * boards/teco/openearable_v2 (the OpenEarable 2.0 / Haven board), where the
+ * codec sits on the P1.00/P1.15 bus and is enabled by P0.04.
  *
- * NOTE: confirm i2c1 is in fact the Arduino-header bus for your exact NCS/
- * Zephyr version before wiring real hardware to the DK — Nordic DK bus
- * numbering has occasionally shifted between SDK releases and board
- * revisions. i2c0 is the fallback if i2c1 turns out to be reserved for an
- * onboard peripheral on this revision.
+ * NOTE: confirm i2c1 is the Arduino-header bus and P1.04 is D2 for your
+ * exact NCS version / DK revision before wiring — Nordic DK pin maps have
+ * shifted between releases (see the DK's own arduino_header node).
  *
- * NOTE: 0x64 is the real ADAU1860 address per the actual Haven Dev Board
- * schematic (EasyEDA Pro, "OpenEarable - Main v2.7", ADDR0/ADDR1 strapping
- * — confirmed 2026-08-25, replacing the earlier 0x28 placeholder guessed
- * before any schematic existed). Address is a property of the chip's
- * strapping, not the board it's wired to, so this holds whether the real
- * ADAU1860 ends up bench-wired to this DK or on the production board
- * directly. The *bus* (i2c1 here) is still DK-specific, separate question
- * from the address -- the schematic's own "I2C1" label refers to the
- * production board's bus numbering, not necessarily this DK's &i2c1 node;
- * still needs reconciling once real hardware is in hand.
- *
- * REFERENCE — real Haven Dev Board pin assignments, read directly off the
- * MDBT531/MDBT53 (nRF5340) module symbol in the schematic (2026-08-25).
- * Recorded here for whenever a real board-specific overlay gets built;
- * NOT applied to the DK pins below, since the DK's Arduino header doesn't
- * expose several of these GPIOs at all (confirmed against its own
- * gpio-map -- e.g. P0.28 isn't broken out on this DK's header):
- *   I2C1 (dedicated ADAU1860 bus, separate from the main SDA/SCL used by
- *         the charger/fuel gauge): SDA1 = P1.15, SCL1 = P1.00
- *   I2S:  DIN (ADAU1860->nRF, i.e. SDIN) = P0.28
- *         BCLK                          = P1.10
- *         LRCLK                         = P0.30
- *         DOUT (nRF->ADAU1860, i.e. SDOUT) = P0.31
- *   No MCK net visible between the module and the ADAU1860 -- see the I2S
- *   pinctrl comment below for why.
+ * NOTE (history): an earlier revision of this overlay put the nRF5340 as
+ * I2S *slave*, inferring that from the codec's own 24.576 MHz crystal. The
+ * upstream OpenEarable firmware that runs on this codec has the nRF as I2S
+ * MASTER (I2S_SCK_M / I2S_LRCK_M, hfclkaudio 12.288 MHz); the ADAU1860
+ * bridges the two clock domains with its ASRCs, which is what they are for.
+ * The upstream pinout also settles signal direction: nRF SDOUT → codec
+ * SDATAI_0 (board net "DIN"), codec SDATAO_0 → nRF SDIN (net "DOUT").
  */
 
 &i2c1 {
@@ -47,38 +32,25 @@
 	clock-frequency = <I2C_BITRATE_FAST>;
 
 	adau1860: adau1860@64 {
-		compatible = "adi,adau1860";
+		compatible = "analog,adau1860";
 		reg = <0x64>;
+		enable-gpios = <&gpio1 4 GPIO_ACTIVE_HIGH>;
 		status = "okay";
 	};
 };
 
 /*
- * The DK's board-level pinctrl (nrf5340_cpuapp_common-pinctrl.dtsi) has no
- * i2s0 state at all — I2S isn't part of the DK's standard Arduino-header
- * mapping the way i2c1 is — so it's defined here instead. Routed to
- * Arduino D4-D8 (gpio1 6-10), which are otherwise unused by the DK's
- * leds/buttons/i2c1/uart0/uart1/qspi/spi4.
- *
- * NOTE: was assuming nRF5340 as I2S *master* -- switched to *slave*
- * (2026-08-25) based on real schematic evidence, not just a guess either
- * way: the ADAU1860 has its own dedicated 24.576MHz crystal directly on
- * its XTALI/XTALO pins, a classic audio master-clock frequency, strongly
- * suggesting *it* generates BCLK/LRCLK and the nRF5340 receives them --
- * standard architecture for a system where a dedicated audio DSP anchors
- * the clock domain. No MCK net is visible between the module and the
- * ADAU1860 in the schematic either, consistent with slave mode (MCK is
- * only meaningful as a master-mode output). Confirm against the ADAU1860
- * datasheet before this matters for real -- nothing exercises actual I2S
- * hardware yet either way (adau1860_control.c's audio path is still
- * unwired), so this is a documentation correction, not yet a functional
- * one.
+ * The DK's board-level pinctrl has no i2s0 state at all — I2S isn't part of
+ * the DK's standard Arduino-header mapping the way i2c1 is — so it's defined
+ * here, on Arduino D4–D7 (gpio1 6–9), which are otherwise unused by the
+ * DK's leds/buttons/i2c1/uart0/uart1/qspi/spi4. No MCK: the ADAU1860 runs
+ * from its own crystal and has no MCLK input wired on the real board.
  */
 &pinctrl {
 	i2s0_default: i2s0_default {
 		group1 {
-			psels = <NRF_PSEL(I2S_SCK_S, 1, 6)>,
-				<NRF_PSEL(I2S_LRCK_S, 1, 7)>,
+			psels = <NRF_PSEL(I2S_SCK_M, 1, 6)>,
+				<NRF_PSEL(I2S_LRCK_M, 1, 7)>,
 				<NRF_PSEL(I2S_SDOUT, 1, 8)>,
 				<NRF_PSEL(I2S_SDIN, 1, 9)>;
 		};
@@ -86,8 +58,8 @@
 
 	i2s0_sleep: i2s0_sleep {
 		group1 {
-			psels = <NRF_PSEL(I2S_SCK_S, 1, 6)>,
-				<NRF_PSEL(I2S_LRCK_S, 1, 7)>,
+			psels = <NRF_PSEL(I2S_SCK_M, 1, 6)>,
+				<NRF_PSEL(I2S_LRCK_M, 1, 7)>,
 				<NRF_PSEL(I2S_SDOUT, 1, 8)>,
 				<NRF_PSEL(I2S_SDIN, 1, 9)>;
 			low-power-enable;
@@ -100,4 +72,12 @@
 	pinctrl-0 = <&i2s0_default>;
 	pinctrl-1 = <&i2s0_sleep>;
 	pinctrl-names = "default", "sleep";
+	/* 12.288 MHz audio PLL -> exact 48 kHz frame clock for the LDL tone
+	 * (tone_gen.c). Wire D4 (BCLK) / D5 (LRCLK) / D6 (SDOUT) to the eval
+	 * board's P2 header: pins 8 / 6 / 4 respectively (UG-2017 Table 8). */
+	clock-source = "ACLK";
+};
+
+&clock {
+	hfclkaudio-frequency = <12288000>;
 };

@@ -1,0 +1,33 @@
+# ADAU1860 ("Lark") low-power audio codec + FastDSP, I2C control port.
+#
+# Based on OpenEarable 2.0's binding (OpenEarable/open-earable-2,
+# dts/bindings/analog,adau1860.yaml, Apache-2.0), with an optional supply GPIO
+# added for boards where the codec sits behind a load switch.
+
+description: Analog Devices ADAU1860 audio codec / DSP (I2C control port)
+
+compatible: "analog,adau1860"
+
+include: i2c-device.yaml
+
+properties:
+  enable-gpios:
+    type: phandle-array
+    required: true
+    description: |
+      Codec enable / power-down pin (net DAC_ENABLE on the OpenEarable and
+      Haven boards, nRF5340 P0.04 -> ADAU1860 pin E4). Driven high before the
+      first I2C transaction, then 35 ms common-mode rise wait.
+
+  supply-gpios:
+    type: phandle-array
+    description: |
+      Optional load-switch enable for the codec's supply rail (V_LS on the
+      OpenEarable/Haven board, nRF5340 P1.11). Driven high, then
+      supply-delay-us, before enable-gpios. Omit when the board turns the
+      rail on itself (the openearable_v2 board init does).
+
+  supply-delay-us:
+    type: int
+    default: 300
+    description: "Settling time after asserting supply-gpios (AP22916: 250 us)."
